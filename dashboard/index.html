@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>25 Nov 2026 · World News Radar &amp; Editorial Plate</title>
+<style>
+:root{
+  --bg:#0b0e14;--panel:#121722;--panel2:#181f2e;--line:#263046;
+  --text:#e9eef7;--muted:#93a1bc;--accent:#f59e0b;--cyan:#38bdf8;
+  --red:#f43f5e;--green:#10b981;--violet:#a78bfa;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  --serif:Georgia,"Times New Roman",serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;line-height:1.4}
+header{
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;
+  padding:14px 20px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,#131926,#0d111a);
+}
+.brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.brand h1{font-family:var(--serif);font-size:1.35rem;letter-spacing:.02em;font-weight:700}
+.dateline{font-family:var(--mono);font-size:.78rem;color:var(--accent);letter-spacing:.08em}
+.badges{display:flex;gap:8px;flex-wrap:wrap}
+.badge{
+  font-family:var(--mono);font-size:.72rem;padding:4px 9px;border-radius:999px;
+  border:1px solid var(--line);background:var(--panel2);color:var(--muted);
+}
+.badge.ok{border-color:#155e49;color:var(--green);background:#0d231d}
+main{
+  display:grid;grid-template-columns:minmax(320px,1.05fr) minmax(340px,1fr);
+  gap:16px;padding:16px 20px;max-width:1440px;margin:0 auto;
+}
+@media(max-width:960px){main{grid-template-columns:1fr}}
+.card{
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  overflow:hidden;display:flex;flex-direction:column;
+}
+.card-head{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:11px 14px;border-bottom:1px solid var(--line);background:var(--panel2);
+}
+.card-title{font-family:var(--mono);font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.controls{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+button,.file-btn{
+  background:var(--panel);color:var(--text);border:1px solid var(--line);
+  border-radius:6px;padding:4px 9px;font-size:.75rem;font-family:var(--mono);
+  cursor:pointer;transition:.15s;
+}
+button:hover,.file-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+button.active{background:#1b2c44;border-color:var(--cyan);color:var(--cyan)}
+.file-btn input{display:none}
+.stage-wrap{
+  position:relative;aspect-ratio:1/1;width:100%;background:#070a0f;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+}
+#plateImg{
+  width:100%;height:100%;object-fit:contain;display:block;
+  transition:transform .25s ease;transform-origin:center;
+}
+#plateImg.zoomed{transform:scale(1.65);cursor:grab}
+.grid-overlay{
+  position:absolute;inset:0;pointer-events:none;opacity:0;transition:.2s;
+  background-image:
+    linear-gradient(to right,rgba(56,189,248,.22) 1px,transparent 1px),
+    linear-gradient(to bottom,rgba(56,189,248,.22) 1px,transparent 1px);
+  background-size:25% 25%;
+}
+.grid-overlay.on{opacity:1}
+.pin-layer{position:absolute;inset:0;pointer-events:none}
+.pin-layer.hidden{display:none}
+.plate-pin{
+  position:absolute;transform:translate(-50%,-50%);pointer-events:auto;
+  width:24px;height:24px;border-radius:50%;border:2px solid #fff;
+  background:rgba(11,14,20,.82);color:#fff;font-family:var(--mono);font-size:.7rem;
+  display:grid;place-items:center;cursor:pointer;transition:.15s;
+  box-shadow:0 0 0 3px rgba(0,0,0,.35);
+}
+.plate-pin.sel{background:var(--accent);color:#0b0e14;border-color:#fff;transform:translate(-50%,-50%) scale(1.22);z-index:5}
+.fallback-note{
+  position:absolute;bottom:10px;left:10px;right:10px;padding:8px 10px;
+  border-radius:8px;background:rgba(11,14,20,.88);border:1px solid var(--line);
+  font-family:var(--mono);font-size:.72rem;color:var(--muted);display:none;
+}
+.plate-foot{
+  padding:12px 14px;border-top:1px solid var(--line);display:flex;
+  justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
+  font-size:.82rem;
+}
+.focus-label{color:var(--text);font-weight:600}
+.focus-meta{font-family:var(--mono);font-size:.74rem;color:var(--muted)}
+.radar-box{padding:12px 14px;border-bottom:1px solid var(--line);background:#0e131d}
+#radarSvg{width:100%;height:185px;display:block;border-radius:8px;background:radial-gradient(circle at 50% 55%,#142033,#090d14)}
+.radar-sweep{transform-origin:300px 100px;animation:spin 14s linear infinite}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.filters{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;
+  padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel2);
+}
+.pills{display:flex;gap:6px;flex-wrap:wrap}
+.pill{
+  font-family:var(--mono);font-size:.7rem;padding:4px 8px;border-radius:999px;
+  border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;
+}
+.pill.active{background:var(--accent);color:#0b0e14;border-color:var(--accent);font-weight:700}
+.list{display:flex;flex-direction:column;overflow-y:auto;max-height:460px}
+.story{
+  display:grid;grid-template-columns:36px 1fr auto;gap:10px;align-items:start;
+  padding:11px 14px;border-bottom:1px solid rgba(38,48,70,.65);cursor:pointer;transition:.14s;
+}
+.story:hover{background:#161d2b}
+.story.sel{background:#1a2436;box-shadow:inset 3px 0 0 var(--accent)}
+.rank{
+  width:30px;height:30px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);
+  display:grid;place-items:center;font-family:var(--mono);font-size:.82rem;font-weight:700;color:var(--accent);
+}
+.story-top{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:3px}
+.cat{
+  font-family:var(--mono);font-size:.66rem;padding:2px 6px;border-radius:4px;
+  text-transform:uppercase;letter-spacing:.05em;font-weight:700;
+}
+.region{font-family:var(--mono);font-size:.7rem;color:var(--muted)}
+.headline{font-size:.9rem;font-weight:600;color:var(--text);margin-bottom:3px}
+.summary{font-size:.78rem;color:var(--muted)}
+.score-col{text-align:right;min-width:56px}
+.score-val{font-family:var(--mono);font-size:.84rem;font-weight:700;color:var(--cyan)}
+.bar{height:5px;width:54px;background:#0a0f18;border-radius:4px;overflow:hidden;margin-top:5px}
+.bar>i{display:block;height:100%;border-radius:4px}
+footer{
+  padding:10px 20px 18px;max-width:1440px;margin:0 auto;display:flex;
+  justify-content:space-between;flex-wrap:wrap;gap:8px;
+  font-family:var(--mono);font-size:.72rem;color:var(--muted);
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>WORLD NEWS EDITORIAL PLATE</h1>
+    <span class="dateline">WEDNESDAY 25 NOVEMBER 2026 · UTC</span>
+  </div>
+  <div class="badges">
+    <span class="badge">BOUNTY: news-image-20261125</span>
+    <span class="badge ok">1024×1024 PNG</span>
+    <span class="badge ok">DETERMINISTIC · NO NETWORK</span>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <div class="card-head">
+      <span class="card-title">Generated Plate · /output/entry.png</span>
+      <div class="controls">
+        <button id="btnGrid" title="Toggle 4x4 composition grid (G)">GRID</button>
+        <button id="btnPins" class="active" title="Toggle story markers (P)">PINS</button>
+        <button id="btnZoom" title="Toggle 1.65x zoom (Z)">ZOOM</button>
+        <label class="file-btn">LOAD PNG<input id="filePick" type="file" accept="image/png,image/jpeg"></label>
+      </div>
+    </div>
+    <div class="stage-wrap" id="stage">
+      <img id="plateImg" alt="25 November 2026 World News Composite">
+      <div class="grid-overlay" id="gridOverlay"></div>
+      <div class="pin-layer" id="pinLayer"></div>
+      <div class="fallback-note" id="fallbackNote"></div>
+    </div>
+    <div class="plate-foot">
+      <div>
+        <div class="focus-label" id="focusHeadline">Select a ranked story or radar node</div>
+        <div class="focus-meta" id="focusMeta">Use ↑/↓ keys to cycle stories · Click pins to inspect composition zones</div>
+      </div>
+      <div class="focus-meta" id="imgMeta">Loading image…</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <span class="card-title">Ranked Global News Radar · 25 Nov 2026</span>
+      <div class="controls">
+        <button id="btnSort" title="Toggle sort mode">SORT: RANK</button>
+      </div>
+    </div>
+    <div class="radar-box">
+      <svg id="radarSvg" viewBox="0 0 600 200" aria-label="World News Signal Radar">
+        <g stroke="#22304a" stroke-width="1" fill="none">
+          <line x1="0" y1="100" x2="600" y2="100"/>
+          <line x1="300" y1="0" x2="300" y2="200"/>
+          <ellipse cx="300" cy="100" rx="260" ry="86"/>
+          <ellipse cx="300" cy="100" rx="175" ry="58"/>
+          <ellipse cx="300" cy="100" rx="90" ry="30"/>
+        </g>
+        <g class="radar-sweep">
+          <path d="M300 100 L300 12 A88 88 0 0 1 365 36 Z" fill="rgba(56,189,248,0.12)"/>
+          <line x1="300" y1="100" x2="300" y2="12" stroke="rgba(56,189,248,0.55)" stroke-width="1.5"/>
+        </g>
+        <g id="radarNodes"></g>
+      </svg>
+    </div>
+    <div class="filters">
+      <div class="pills" id="catPills"></div>
+      <span class="focus-meta" id="countLabel">0 stories</span>
+    </div>
+    <div class="list" id="storyList"></div>
+  </section>
+</main>
+
+<footer>
+  <span>KEYS: ↑/↓ CYCLE RANKED SIGNALS · G GRID · P PINS · Z ZOOM</span>
+  <span>OFFLINE DASHBOARD · ZERO EXTERNAL DEPENDENCIES</span>
+</footer>
+
+<script>
+const COLORS = {
+  DIPLOMACY: "#f43f5e",
+  ECONOMY:   "#f59e0b",
+  CLIMATE:   "#10b981",
+  TECH:      "#38bdf8",
+  SOCIETY:   "#a78bfa"
+};
+
+const STORIES = [
+  {
+    rank: 1, cat: "DIPLOMACY", region: "EURASIA & MEDITERRANEAN", score: 96,
+    headline: "Ceasefire Architecture & Maritime Corridor Talks Intensify",
+    summary: "Envoys convene across Geneva and Cairo to lock in winter energy corridors and commercial shipping guarantees.",
+    mapX: 332, mapY: 82, plateX: 50, plateY: 42
+  },
+  {
+    rank: 2, cat: "CLIMATE", region: "GLOBAL / COP CLIMATE DESK", score: 92,
+    headline: "Post-COP Adaptation Finance & Grid Storage Pledges Tested",
+    summary: "Multilateral banks finalize disbursement schedules for coastal resilience and utility-scale battery hubs.",
+    mapX: 215, mapY: 138, plateX: 26, plateY: 62
+  },
+  {
+    rank: 3, cat: "ECONOMY", region: "TRANS-PACIFIC MARKETS", score: 89,
+    headline: "Central Banks Diverge on Late-Year Rate Paths & Trade Tariffs",
+    summary: "Export-heavy Asian and European factories recalibrate supply chains ahead of Q1 tariff reviews.",
+    mapX: 472, mapY: 94, plateX: 74, plateY: 58
+  },
+  {
+    rank: 4, cat: "TECH", region: "NORTH AMERICA & EU", score: 86,
+    headline: "Frontier AI Verification & Sovereign Compute Standards Advance",
+    summary: "Regulators and labs align on auditable model provenance benchmarks and cross-border chip capacity.",
+    mapX: 158, mapY: 74, plateX: 28, plateY: 32
+  },
+  {
+    rank: 5, cat: "CLIMATE", region: "ARCTIC & NORTH ATLANTIC", score: 81,
+    headline: "Late-Autumn Polar Anomaly Reshapes Northern Sea-Lane Forecasts",
+    summary: "Meteorological agencies flag record November sea-surface warmth altering winter storm tracks.",
+    mapX: 278, mapY: 34, plateX: 52, plateY: 22
+  },
+  {
+    rank: 6, cat: "ECONOMY", region: "AFRICA & EMERGING MARKETS", score: 78,
+    headline: "Sovereign Debt Refinancing & Critical Minerals Accords Signed",
+    summary: "Regional development blocs pair mineral processing plants with local-currency bond facilities.",
+    mapX: 326, mapY: 136, plateX: 54, plateY: 74
+  },
+  {
+    rank: 7, cat: "TECH", region: "LOW-EARTH ORBIT / GLOBAL", score: 74,
+    headline: "Direct-to-Cell Satellite Mesh & Orbital Debris Rules Expand",
+    summary: "Telecom consortia deploy emergency rural broadband relays under tightened de-orbit compliance rules.",
+    mapX: 420, mapY: 52, plateX: 74, plateY: 30
+  },
+  {
+    rank: 8, cat: "SOCIETY", region: "GLOBAL URBAN CORRIDORS", score: 71,
+    headline: "Winter Humanitarian Airlifts & Urban Housing Compacts Mobilize",
+    summary: "Aid agencies scale cold-weather relief logistics while major metros debate transit-linked housing.",
+    mapX: 255, mapY: 98, plateX: 30, plateY: 78
+  }
+];
+
+let activeCat = "ALL";
+let sortMode = "RANK";
+let selectedRank = 1;
+
+const $ = (id) => document.getElementById(id);
+
+function filteredStories() {
+  const list = activeCat === "ALL" ? [...STORIES] : STORIES.filter(s => s.cat === activeCat);
+  if (sortMode === "REGION") list.sort((a, b) => a.region.localeCompare(b.region));
+  else list.sort((a, b) => a.rank - b.rank);
+  return list;
+}
+
+function renderPills() {
+  const cats = ["ALL", ...Object.keys(COLORS)];
+  $("catPills").innerHTML = cats.map(c =>
+    `<button class="pill ${c === activeCat ? "active" : ""}" data-cat="${c}">${c}</button>`
+  ).join("");
+  $("catPills").querySelectorAll(".pill").forEach(btn => {
+    btn.onclick = () => { activeCat = btn.dataset.cat; renderAll(); };
+  });
+}
+
+function renderList(items) {
+  $("countLabel").textContent = `${items.length} signal${items.length === 1 ? "" : "s"}`;
+  $("storyList").innerHTML = items.map(s => {
+    const col = COLORS[s.cat];
+    const sel = s.rank === selectedRank ? "sel" : "";
+    return `<article class="story ${sel}" data-rank="${s.rank}">
+      <div class="rank">#${s.rank}</div>
+      <div>
+        <div class="story-top">
+          <span class="cat" style="background:${col}22;color:${col};border:1px solid ${col}66">${s.cat}</span>
+          <span class="region">${s.region}</span>
+        </div>
+        <div class="headline">${s.headline}</div>
+        <div class="summary">${s.summary}</div>
+      </div>
+      <div class="score-col">
+        <div class="score-val">${s.score}</div>
+        <div class="bar"><i style="width:${s.score}%;background:${col}"></i></div>
+      </div>
+    </article>`;
+  }).join("");
+  $("storyList").querySelectorAll(".story").forEach(el => {
+    el.onclick = () => selectStory(Number(el.dataset.rank));
+  });
+}
+
+function renderRadar(items) {
+  const visible = new Set(items.map(s => s.rank));
+  $("radarNodes").innerHTML = STORIES.map(s => {
+    const col = COLORS[s.cat];
+    const isSel = s.rank === selectedRank;
+    const op = visible.has(s.rank) ? 1 : 0.22;
+    const r = isSel ? 9 : 5.5;
+    return `<g style="cursor:pointer;opacity:${op}" data-rank="${s.rank}">
+      ${isSel ? `<circle cx="${s.mapX}" cy="${s.mapY}" r="16" fill="none" stroke="${col}" stroke-width="1.5" stroke-dasharray="3 3"/>` : ""}
+      <circle cx="${s.mapX}" cy="${s.mapY}" r="${r}" fill="${col}" stroke="#fff" stroke-width="${isSel ? 2 : 1}"/>
+      <text x="${s.mapX + 11}" y="${s.mapY + 4}" fill="#e9eef7" font-family="monospace" font-size="10">#${s.rank}</text>
+    </g>`;
+  }).join("");
+  $("radarNodes").querySelectorAll("g").forEach(g => {
+    g.onclick = () => selectStory(Number(g.dataset.rank));
+  });
+}
+
+function renderPins(items) {
+  $("pinLayer").innerHTML = items.map(s => {
+    const sel = s.rank === selectedRank ? "sel" : "";
+    return `<button class="plate-pin ${sel}" style="left:${s.plateX}%;top:${s.plateY}%;border-color:${COLORS[s.cat]}" data-rank="${s.rank}" title="#${s.rank} ${s.headline}">${s.rank}</button>`;
+  }).join("");
+  $("pinLayer").querySelectorAll(".plate-pin").forEach(p => {
+    p.onclick = (e) => { e.stopPropagation(); selectStory(Number(p.dataset.rank)); };
+  });
+}
+
+function updateFocus() {
+  const s = STORIES.find(x => x.rank === selectedRank) || STORIES[0];
+  $("focusHeadline").textContent = `#${s.rank} · ${s.headline}`;
+  $("focusMeta").textContent = `${s.cat} · ${s.region} · Impact ${s.score}/100`;
+}
+
+function selectStory(rank) {
+  selectedRank = rank;
+  renderAll();
+}
+
+function renderAll() {
+  const items = filteredStories();
+  renderPills();
+  renderList(items);
+  renderRadar(items);
+  renderPins(items);
+  updateFocus();
+}
+
+function buildFallbackDataUrl() {
+  const c = document.createElement("canvas");
+  c.width = 1024; c.height = 1024;
+  const ctx = c.getContext("2d");
+  const g = ctx.createLinearGradient(0, 0, 1024, 1024);
+  g.addColorStop(0, "#0f172a"); g.addColorStop(1, "#090d16");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 1024, 1024);
+  ctx.strokeStyle = "#26344d"; ctx.lineWidth = 2;
+  ctx.strokeRect(36, 36, 952, 952);
+  ctx.fillStyle = "#f59e0b"; ctx.font = "bold 26px monospace";
+  ctx.fillText("25 NOVEMBER 2026 · WORLD NEWS COMPOSITE PREVIEW", 72, 102);
+  ctx.fillStyle = "#94a3b8"; ctx.font = "20px monospace";
+  ctx.fillText("Run `node main.ts` to write /output/entry.png, or click LOAD PNG.", 72, 144);
+  STORIES.forEach(s => {
+    const x = s.plateX * 10.24, y = s.plateY * 10.24;
+    ctx.beginPath(); ctx.arc(x, y, 28, 0, Math.PI * 2);
+    ctx.fillStyle = COLORS[s.cat] + "33"; ctx.fill();
+    ctx.strokeStyle = COLORS[s.cat]; ctx.lineWidth = 3; ctx.stroke();
+  });
+  return c.toDataURL("image/png");
+}
+
+function loadEntryImage() {
+  const paths = ["./entry.png", "../output/entry.png", "/output/entry.png", "../entry.png"];
+  const img = $("plateImg");
+  let idx = 0;
+  function tryNext() {
+    if (idx >= paths.length) {
+      img.onload = () => {
+        $("imgMeta").textContent = "Preview canvas (1024×1024)";
+        $("fallbackNote").style.display = "block";
+        $("fallbackNote").textContent = "entry.png not found beside dashboard — showing preview placeholder. Use LOAD PNG to inspect /output/entry.png.";
+      };
+      img.src = buildFallbackDataUrl();
+      return;
+    }
+    const candidate = paths[idx++];
+    img.onload = () => {
+      $("fallbackNote").style.display = "none";
+      $("imgMeta").textContent = `${candidate} · ${img.naturalWidth}×${img.naturalHeight}px`;
+    };
+    img.onerror = tryNext;
+    img.src = candidate;
+  }
+  tryNext();
+}
+
+$("btnGrid").onclick = () => {
+  $("btnGrid").classList.toggle("active");
+  $("gridOverlay").classList.toggle("on");
+};
+$("btnPins").onclick = () => {
+  $("btnPins").classList.toggle("active");
+  $("pinLayer").classList.toggle("hidden");
+};
+$("btnZoom").onclick = () => {
+  $("btnZoom").classList.toggle("active");
+  $("plateImg").classList.toggle("zoomed");
+};
+$("btnSort").onclick = () => {
+  sortMode = sortMode === "RANK" ? "REGION" : "RANK";
+  $("btnSort").textContent = `SORT: ${sortMode}`;
+  renderAll();
+};
+$("filePick").onchange = (e) => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const url = URL.createObjectURL(f);
+  const img = $("plateImg");
+  img.onload = () => {
+    $("fallbackNote").style.display = "none";
+    $("imgMeta").textContent = `${f.name} · ${img.naturalWidth}×${img.naturalHeight}px · ${(f.size / 1024).toFixed(1)} KiB`;
+  };
+  img.src = url;
+};
+
+window.addEventListener("keydown", (e) => {
+  const items = filteredStories();
+  if (!items.length) return;
+  const i = items.findIndex(s => s.rank === selectedRank);
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    selectStory(items[(i + 1) % items.length].rank);
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    selectStory(items[(i - 1 + items.length) % items.length].rank);
+  } else if (e.key.toLowerCase() === "g") {
+    $("btnGrid").click();
+  } else if (e.key.toLowerCase() === "p") {
+    $("btnPins").click();
+  } else if (e.key.toLowerCase() === "z") {
+    $("btnZoom").click();
+  }
+});
+
+renderAll();
+loadEntryImage();
+</script>
+</body>
+</html>
