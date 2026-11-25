@@ -1,723 +1,512 @@
-export type RadarSector =
+export type DeskCategory =
   | "geopolitics"
   | "economy"
   | "climate"
+  | "science"
   | "technology"
-  | "society"
-  | "security";
+  | "society";
 
-export type RadarRing = "core" | "inner" | "mid" | "outer";
+export type RegionCode = "AMER" | "EMEA" | "APAC" | "GLOB";
 
-export interface SnapshotItem {
+export interface StorySignal {
   id: string;
-  title: string;
-  summary: string;
-  sector: RadarSector;
-  region: string;
+  slug: string;
+  desk: DeskCategory;
+  region: RegionCode;
+  headline: string;
+  deck: string;
+  dateline: string;
   impact: number;
   urgency: number;
   reach: number;
-  momentum: number;
   confidence: number;
-  sources: number;
-  tags: string[];
-  timestamp: string;
-  lat?: number;
-  lon?: number;
+  coordinates: { lat: number; lon: number };
+  tags: readonly string[];
 }
 
-export interface NewsSnapshot {
-  date: string;
-  edition: string;
-  title: string;
-  subtitle: string;
-  generatedAt: string;
-  items: SnapshotItem[];
-  stories: SnapshotItem[];
-  meta: Record<string, unknown>;
+export interface TickerQuote {
+  symbol: string;
+  label: string;
+  value: string;
+  delta: number;
+  unit: string;
 }
 
-export interface RadarWeights {
-  impact: number;
-  urgency: number;
-  reach: number;
-  momentum: number;
-  corroboration: number;
+export interface EditorialIssue {
+  issueId: string;
+  editionDate: string;
+  weekday: string;
+  datelineLabel: string;
+  editionNumber: number;
+  bannerHeadline: string;
+  subBanner: string;
+  leadStoryId: string;
+  stories: readonly StorySignal[];
+  tickers: readonly TickerQuote[];
 }
 
-export interface RadarOptions {
-  weights?: Partial<RadarWeights>;
-  maxBlips?: number;
-  diversityDamping?: number;
-  minAngleGapDeg?: number;
-}
-
-export interface RadarBlip extends SnapshotItem {
+export interface RankedStory extends StorySignal {
+  editorialScore: number;
   rank: number;
+  tier: "lead" | "featured" | "brief";
+}
+
+export interface RadarAxis {
+  axis: DeskCategory;
+  label: string;
   score: number;
-  rawScore: number;
-  ring: RadarRing;
-  ringIndex: number;
-  sectorIndex: number;
-  angleDeg: number;
+  normalized: number;
+  storyCount: number;
+  topStoryId: string;
   angleRad: number;
-  radius: number;
   x: number;
   y: number;
-  size: number;
-}
-
-export interface SectorSummary {
-  sector: RadarSector;
-  label: string;
-  count: number;
-  avgScore: number;
-  maxScore: number;
-  momentum: number;
-  share: number;
-  startAngleDeg: number;
-  endAngleDeg: number;
-  topItemId: string | null;
-}
-
-export interface RegionSummary {
-  region: string;
-  count: number;
-  avgScore: number;
-  maxScore: number;
-  share: number;
-}
-
-export interface RadarMetrics {
-  totalItems: number;
-  intensityIndex: number;
-  diversityIndex: number;
-  averageConfidence: number;
-  netMomentum: number;
-  topSector: RadarSector;
-  topRegion: string;
-  ringCounts: Record<RadarRing, number>;
 }
 
 export interface RadarModel {
-  date: string;
-  edition: string;
-  title: string;
-  subtitle: string;
-  generatedAt: string;
-  weights: RadarWeights;
-  lead: RadarBlip | null;
-  blips: RadarBlip[];
-  ranked: RadarBlip[];
-  items: RadarBlip[];
-  sectors: SectorSummary[];
-  regions: RegionSummary[];
-  metrics: RadarMetrics;
-}
-
-export interface BoardIssueOptions {
-  masthead?: string;
-  featuredCount?: number;
-  briefCount?: number;
-  tickerCount?: number;
-}
-
-export interface BoardIssue {
   issueId: string;
-  date: string;
-  edition: string;
-  masthead: string;
-  headline: string;
-  deck: string;
-  lead: RadarBlip | null;
-  featured: RadarBlip[];
-  briefs: RadarBlip[];
-  tickers: string[];
-  sectorHighlights: Array<{ sector: RadarSector; label: string; headline: string; score: number }>;
-  metrics: RadarMetrics;
-  status: "ready" | "degraded" | "empty";
-  warnings: string[];
+  editionDate: string;
+  compositeIndex: number;
+  dominantDesk: DeskCategory;
+  axes: readonly RadarAxis[];
+  polygonPoints: readonly { x: number; y: number }[];
+  regionalHeat: Record<RegionCode, number>;
 }
 
-const DEFAULT_DATE = "2026-11-25";
-const DEFAULT_EDITION = "Wednesday, 25 November 2026";
-const DEFAULT_TIMESTAMP = "2026-11-25T12:00:00Z";
+export interface NewsSnapshot {
+  format: "editorial-snapshot/1";
+  issueId: string;
+  editionDate: string;
+  bannerHeadline: string;
+  leadStory: RankedStory;
+  rankedStories: readonly RankedStory[];
+  radar: RadarModel;
+  tickers: readonly TickerQuote[];
+  checksum: string;
+}
 
-const SECTORS: readonly RadarSector[] = [
+const DESK_ORDER: readonly DeskCategory[] = [
   "geopolitics",
   "economy",
   "climate",
+  "science",
   "technology",
   "society",
-  "security",
 ];
 
-const SECTOR_LABELS: Record<RadarSector, string> = {
+const DESK_LABELS: Record<DeskCategory, string> = {
   geopolitics: "Geopolitics",
   economy: "Economy",
-  climate: "Climate & Energy",
-  technology: "Tech & Science",
+  climate: "Climate",
+  science: "Science",
+  technology: "Technology",
   society: "Society",
-  security: "Security",
 };
 
-const DEFAULT_WEIGHTS: RadarWeights = {
-  impact: 0.34,
-  urgency: 0.24,
-  reach: 0.2,
-  momentum: 0.12,
-  corroboration: 0.1,
-};
+const REGION_ORDER: readonly RegionCode[] = ["AMER", "EMEA", "APAC", "GLOB"];
 
-const RING_BANDS: Record<RadarRing, [number, number]> = {
-  core: [0.18, 0.34],
-  inner: [0.38, 0.56],
-  mid: [0.6, 0.76],
-  outer: [0.8, 0.94],
-};
-
-const DEFAULT_ITEMS: readonly SnapshotItem[] = [
-  {
-    id: "nov25-diplomacy-accord",
-    title: "Envoys advance maritime and trade corridor framework in Geneva",
-    summary: "Multilateral negotiators publish draft transit guarantees linking Red Sea, Mediterranean, and Indo-Pacific ports.",
-    sector: "geopolitics",
-    region: "Global",
-    impact: 91,
-    urgency: 86,
-    reach: 92,
-    momentum: 64,
-    confidence: 0.92,
-    sources: 18,
-    tags: ["diplomacy", "shipping", "geneva"],
-    timestamp: "2026-11-25T08:30:00Z",
-    lat: 46.2,
-    lon: 6.14,
-  },
-  {
-    id: "nov25-central-banks",
-    title: "Central banks coordinate liquidity guidance ahead of year-end",
-    summary: "Sovereign bond yields steady after synchronized statements from Frankfurt, Tokyo, and Washington on credit buffers.",
-    sector: "economy",
-    region: "Americas",
-    impact: 88,
-    urgency: 82,
-    reach: 89,
-    momentum: 48,
-    confidence: 0.95,
-    sources: 21,
-    tags: ["markets", "rates", "liquidity"],
-    timestamp: "2026-11-25T10:15:00Z",
-    lat: 38.9,
-    lon: -77.03,
-  },
-  {
-    id: "nov25-grid-climate",
-    title: "Southern Hemisphere heatwave tests regional power grids",
-    summary: "Grid operators activate battery reserves and cross-border interconnects as early-summer temperatures set records.",
-    sector: "climate",
-    region: "Asia-Pacific",
-    impact: 84,
-    urgency: 89,
-    reach: 80,
-    momentum: 72,
-    confidence: 0.9,
-    sources: 14,
-    tags: ["heatwave", "energy", "grid"],
-    timestamp: "2026-11-25T06:40:00Z",
-    lat: -33.86,
-    lon: 151.2,
-  },
-  {
-    id: "nov25-ai-safety-audit",
-    title: "Cross-border compute and model audit standard enters phase two",
-    summary: "Regulators and frontier labs adopt shared cryptographic verification benchmarks for critical-infrastructure systems.",
-    sector: "technology",
-    region: "Europe",
-    impact: 82,
-    urgency: 75,
-    reach: 84,
-    momentum: 58,
-    confidence: 0.89,
-    sources: 16,
-    tags: ["ai", "standards", "compute"],
-    timestamp: "2026-11-25T09:05:00Z",
-    lat: 50.85,
-    lon: 4.35,
-  },
-  {
-    id: "nov25-regional-ceasefire",
-    title: "Monitors review humanitarian convoy access along contested borders",
-    summary: "Aid agencies report partial reopening of overland supply routes while diplomatic talks continue on buffer zones.",
-    sector: "security",
-    region: "Middle East",
-    impact: 86,
-    urgency: 88,
-    reach: 83,
-    momentum: 34,
-    confidence: 0.86,
-    sources: 15,
-    tags: ["humanitarian", "ceasefire", "security"],
-    timestamp: "2026-11-25T07:50:00Z",
-    lat: 31.95,
-    lon: 35.91,
-  },
-  {
-    id: "nov25-health-vaccines",
-    title: "African Union expands regional cold-chain manufacturing pact",
-    summary: "New financing unlocks three modular vaccine and diagnostics hubs aimed at cutting import dependence.",
-    sector: "society",
-    region: "Africa",
-    impact: 77,
-    urgency: 68,
-    reach: 76,
-    momentum: 52,
-    confidence: 0.91,
-    sources: 11,
-    tags: ["health", "infrastructure", "africa"],
-    timestamp: "2026-11-25T11:10:00Z",
-    lat: 9.03,
-    lon: 38.74,
-  },
-];
-
-function clamp(v: number, min: number, max: number): number {
-  if (!Number.isFinite(v)) return min;
-  return v < min ? min : v > max ? max : v;
-}
-
-function round(v: number, digits = 3): number {
-  const factor = 10 ** digits;
-  return Math.round(v * factor) / factor;
-}
-
-function toNum(v: unknown, fallback: number): number {
-  if (typeof v === "number" && Number.isFinite(v)) return v;
-  if (typeof v === "string" && v.trim() !== "") {
-    const parsed = Number(v);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback;
-}
-
-function toStr(v: unknown, fallback = ""): string {
-  return typeof v === "string" && v.trim() !== "" ? v.trim() : fallback;
-}
-
-function fnv1a(input: string): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
-
-function normalizeSector(raw: unknown): RadarSector {
-  const s = toStr(raw, "geopolitics").toLowerCase();
-  if (s === "geopolitics" || s.includes("diplom") || s.includes("polit") || s.includes("world") || s.includes("foreign")) return "geopolitics";
-  if (s === "economy" || s.includes("econ") || s.includes("market") || s.includes("finan") || s.includes("trade") || s.includes("biz")) return "economy";
-  if (s === "climate" || s.includes("clim") || s.includes("energ") || s.includes("envir") || s.includes("weather")) return "climate";
-  if (s === "technology" || s.includes("tech") || s.includes("ai") || s.includes("cyber") || s.includes("scien") || s.includes("space")) return "technology";
-  if (s === "society" || s.includes("soc") || s.includes("health") || s.includes("cultur") || s.includes("human")) return "society";
-  if (s === "security" || s.includes("secur") || s.includes("defen") || s.includes("confl") || s.includes("milit") || s.includes("war")) return "security";
-  return SECTORS[fnv1a(s) % SECTORS.length];
-}
-
-function normUnit100(v: unknown, fallback: number): number {
-  const n = toNum(v, fallback);
-  return clamp(n > 0 && n <= 1 ? n * 100 : n, 0, 100);
-}
-
-function normalizeItem(raw: unknown, idx: number, defaultTs: string): SnapshotItem | null {
-  if (!raw || typeof raw !== "object") return null;
-  const r = raw as Record<string, unknown>;
-  const title = toStr(r.title ?? r.headline ?? r.name);
-  if (!title) return null;
-  const sector = normalizeSector(r.sector ?? r.category ?? r.topic ?? r.theme ?? r.quadrant);
-  const region = toStr(r.region ?? r.location ?? r.geo, "Global");
-  const summary = toStr(r.summary ?? r.deck ?? r.blurb ?? r.description, title);
-  const id = toStr(r.id, `item-${idx + 1}-${fnv1a(`${sector}:${title}`).toString(16)}`);
-  const impact = normUnit100(r.impact ?? r.severity ?? r.importance ?? r.weight, 65);
-  const urgency = normUnit100(r.urgency ?? r.recency ?? r.timeliness, 60);
-  const reach = normUnit100(r.reach ?? r.breadth ?? r.coverage, 60);
-  const rawMom = toNum(r.momentum ?? r.velocity ?? r.trend ?? r.delta, 20);
-  const momentum = clamp(Math.abs(rawMom) > 0 && Math.abs(rawMom) < 1 ? rawMom * 100 : rawMom, -100, 100);
-  const rawConf = toNum(r.confidence ?? r.verified, 0.85);
-  const confidence = clamp(rawConf > 1 ? rawConf / 100 : rawConf, 0, 1);
-  const sources = Math.max(1, Math.round(toNum(r.sources ?? r.sourceCount, 3)));
-  const tags = Array.isArray(r.tags)
-    ? r.tags.map((t) => toStr(t)).filter(Boolean)
-    : Array.isArray(r.keywords)
-      ? r.keywords.map((t) => toStr(t)).filter(Boolean)
-      : [sector];
-  const timestamp = toStr(r.timestamp ?? r.publishedAt ?? r.date, defaultTs);
-  const item: SnapshotItem = {
-    id,
-    title,
-    summary,
-    sector,
-    region,
-    impact: round(impact, 2),
-    urgency: round(urgency, 2),
-    reach: round(reach, 2),
-    momentum: round(momentum, 2),
-    confidence: round(confidence, 3),
-    sources,
-    tags,
-    timestamp,
-  };
-  if (typeof r.lat === "number" && Number.isFinite(r.lat)) item.lat = r.lat;
-  if (typeof r.lon === "number" && Number.isFinite(r.lon)) item.lon = r.lon;
-  return item;
-}
-
-function parseLinesToItems(text: string, defaultTs: string): SnapshotItem[] {
-  const out: SnapshotItem[] = [];
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
-  for (let i = 0; i < lines.length; i++) {
-    const parts = lines[i].split("|").map((p) => p.trim());
-    const item = normalizeItem(
-      parts.length >= 2
-        ? { sector: parts[0], title: parts[1], summary: parts[2] ?? parts[1], region: parts[3] ?? "Global" }
-        : { title: parts[0] },
-      i,
-      defaultTs,
-    );
-    if (item) out.push(item);
-  }
-  return out;
-}
-
-export function parseSnapshot(input?: unknown): NewsSnapshot {
-  let raw: unknown = input;
-  if (raw instanceof Uint8Array) {
-    raw = new TextDecoder("utf-8").decode(raw);
-  }
-  if (typeof raw === "string") {
-    const trimmed = raw.trim();
-    if (!trimmed) {
-      raw = undefined;
-    } else {
-      try {
-        raw = JSON.parse(trimmed);
-      } catch {
-        const items = parseLinesToItems(trimmed, DEFAULT_TIMESTAMP);
-        raw = { items };
-      }
-    }
-  }
-
-  const obj = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
-  const date = toStr(obj.date, DEFAULT_DATE);
-  const edition = toStr(obj.edition, date === DEFAULT_DATE ? DEFAULT_EDITION : `Edition ${date}`);
-  const title = toStr(obj.title, "World News Radar");
-  const subtitle = toStr(obj.subtitle, `Global signal synthesis for ${edition}`);
-  const generatedAt = toStr(obj.generatedAt, `${date}T12:00:00Z`);
-
-  const rawList = Array.isArray(raw)
-    ? raw
-    : Array.isArray(obj.items)
-      ? obj.items
-      : Array.isArray(obj.stories)
-        ? obj.stories
-        : Array.isArray(obj.signals)
-          ? obj.signals
-          : Array.isArray(obj.events)
-            ? obj.events
-            : null;
-
-  const parsed = rawList
-    ? rawList.map((entry, i) => normalizeItem(entry, i, generatedAt)).filter((x): x is SnapshotItem => x !== null)
-    : DEFAULT_ITEMS.map((item) => ({ ...item, tags: [...item.tags] }));
-
-  const seen = new Set<string>();
-  const items: SnapshotItem[] = [];
-  for (const item of parsed) {
-    if (!seen.has(item.id)) {
-      seen.add(item.id);
-      items.push(item);
-    }
-  }
-
-  const meta = obj.meta && typeof obj.meta === "object" && !Array.isArray(obj.meta)
-    ? { ...(obj.meta as Record<string, unknown>) }
-    : {};
-
-  return { date, edition, title, subtitle, generatedAt, items, stories: items, meta };
-}
-
-function resolveWeights(custom?: Partial<RadarWeights>): RadarWeights {
-  const merged: RadarWeights = {
-    impact: Math.max(0, toNum(custom?.impact, DEFAULT_WEIGHTS.impact)),
-    urgency: Math.max(0, toNum(custom?.urgency, DEFAULT_WEIGHTS.urgency)),
-    reach: Math.max(0, toNum(custom?.reach, DEFAULT_WEIGHTS.reach)),
-    momentum: Math.max(0, toNum(custom?.momentum, DEFAULT_WEIGHTS.momentum)),
-    corroboration: Math.max(0, toNum(custom?.corroboration, DEFAULT_WEIGHTS.corroboration)),
-  };
-  const sum = merged.impact + merged.urgency + merged.reach + merged.momentum + merged.corroboration;
-  if (sum <= 0) return { ...DEFAULT_WEIGHTS };
-  return {
-    impact: round(merged.impact / sum, 4),
-    urgency: round(merged.urgency / sum, 4),
-    reach: round(merged.reach / sum, 4),
-    momentum: round(merged.momentum / sum, 4),
-    corroboration: round(merged.corroboration / sum, 4),
-  };
-}
-
-function ringForScore(score: number): { ring: RadarRing; ringIndex: number } {
-  if (score >= 78) return { ring: "core", ringIndex: 0 };
-  if (score >= 62) return { ring: "inner", ringIndex: 1 };
-  if (score >= 46) return { ring: "mid", ringIndex: 2 };
-  return { ring: "outer", ringIndex: 3 };
-}
-
-export function buildRadar(input?: NewsSnapshot | unknown, options: RadarOptions = {}): RadarModel {
-  const snap: NewsSnapshot =
-    input && typeof input === "object" && Array.isArray((input as NewsSnapshot).items) && typeof (input as NewsSnapshot).date === "string"
-      ? (input as NewsSnapshot)
-      : parseSnapshot(input);
-
-  const weights = resolveWeights(options.weights);
-  const damping = clamp(toNum(options.diversityDamping, 0.045), 0, 0.25);
-  const minGap = clamp(toNum(options.minAngleGapDeg, 8), 2, 24);
-  const maxBlips = Math.max(1, Math.round(toNum(options.maxBlips, Math.max(snap.items.length, 24))));
-
-  const preliminary = snap.items.map((item) => {
-    const momNorm = clamp((item.momentum + 100) / 2, 0, 100);
-    const corrob = clamp((Math.log2(item.sources + 1) / Math.log2(25)) * 100, 0, 100);
-    const base =
-      item.impact * weights.impact +
-      item.urgency * weights.urgency +
-      item.reach * weights.reach +
-      momNorm * weights.momentum +
-      corrob * weights.corroboration;
-    const rawScore = clamp(base * (0.76 + 0.24 * item.confidence), 0, 100);
-    return { item, rawScore };
-  });
-
-  preliminary.sort((a, b) =>
-    b.rawScore - a.rawScore || a.item.id.localeCompare(b.item.id) || a.item.title.localeCompare(b.item.title),
-  );
-
-  const sectorSeen = new Map<RadarSector, number>();
-  const scored = preliminary.map(({ item, rawScore }, idx) => {
-    const prior = sectorSeen.get(item.sector) ?? 0;
-    sectorSeen.set(item.sector, prior + 1);
-    const dampFactor = idx === 0 ? 1 : Math.max(0.72, 1 - prior * damping);
-    return { item, rawScore: round(rawScore, 2), score: round(clamp(rawScore * dampFactor, 0, 100), 2) };
-  });
-
-  scored.sort((a, b) =>
-    b.score - a.score || b.rawScore - a.rawScore || a.item.id.localeCompare(b.item.id),
-  );
-
-  const sliceDeg = 360 / SECTORS.length;
-  const placedAngles = new Map<string, number[]>();
-  const blips: RadarBlip[] = scored.slice(0, maxBlips).map((entry, idx) => {
-    const { item, score, rawScore } = entry;
-    const sectorIndex = SECTORS.indexOf(item.sector);
-    const { ring, ringIndex } = ringForScore(score);
-    const [rMin, rMax] = RING_BANDS[ring];
-    const hash = fnv1a(`${item.id}:${item.sector}`);
-    const jitter = (hash % 1000) / 1000;
-    const start = sectorIndex * sliceDeg + 6;
-    const span = sliceDeg - 12;
-    let angleDeg = start + jitter * span;
-
-    const bucketKey = `${item.sector}:${ring}`;
-    const used = placedAngles.get(bucketKey) ?? [];
-    for (let attempt = 0; attempt < 12; attempt++) {
-      if (used.every((a) => Math.abs(a - angleDeg) >= minGap)) break;
-      angleDeg = start + ((angleDeg - start + minGap) % span);
-    }
-    used.push(angleDeg);
-    placedAngles.set(bucketKey, used);
-
-    const scoreRatio = clamp(1 - score / 100, 0, 1);
-    const radius = round(rMin + (rMax - rMin) * clamp(scoreRatio * 0.7 + ((hash >>> 10) % 100) / 333, 0, 1), 4);
-    const angleRad = round(((angleDeg - 90) * Math.PI) / 180, 5);
-    return {
-      ...item,
-      rank: idx + 1,
-      score,
-      rawScore,
-      ring,
-      ringIndex,
-      sectorIndex,
-      angleDeg: round(angleDeg, 2),
-      angleRad,
-      radius,
-      x: round(Math.cos(angleRad) * radius, 4),
-      y: round(Math.sin(angleRad) * radius, 4),
-      size: round(clamp(0.45 + (score / 100) * 0.85, 0.45, 1.3), 3),
-    };
-  });
-
-  const total = blips.length;
-  const sectors: SectorSummary[] = SECTORS.map((sector, idx) => {
-    const group = blips.filter((b) => b.sector === sector);
-    const count = group.length;
-    const avgScore = count ? round(group.reduce((s, b) => s + b.score, 0) / count, 2) : 0;
-    const maxScore = count ? group[0].score : 0;
-    const momentum = count ? round(group.reduce((s, b) => s + b.momentum, 0) / count, 2) : 0;
-    return {
-      sector,
-      label: SECTOR_LABELS[sector],
-      count,
-      avgScore,
-      maxScore,
-      momentum,
-      share: total ? round(count / total, 4) : 0,
-      startAngleDeg: round(idx * sliceDeg, 2),
-      endAngleDeg: round((idx + 1) * sliceDeg, 2),
-      topItemId: group[0]?.id ?? null,
-    };
-  });
-
-  const regionMap = new Map<string, RadarBlip[]>();
-  for (const b of blips) {
-    const arr = regionMap.get(b.region) ?? [];
-    arr.push(b);
-    regionMap.set(b.region, arr);
-  }
-  const regions: RegionSummary[] = [...regionMap.entries()]
-    .map(([region, group]) => ({
-      region,
-      count: group.length,
-      avgScore: round(group.reduce((s, b) => s + b.score, 0) / group.length, 2),
-      maxScore: Math.max(...group.map((b) => b.score)),
-      share: total ? round(group.length / total, 4) : 0,
-    }))
-    .sort((a, b) => b.maxScore - a.maxScore || b.count - a.count || a.region.localeCompare(b.region));
-
-  const ringCounts: Record<RadarRing, number> = { core: 0, inner: 0, mid: 0, outer: 0 };
-  for (const b of blips) ringCounts[b.ring]++;
-
-  let entropy = 0;
-  for (const s of sectors) {
-    if (s.share > 0) entropy -= s.share * Math.log2(s.share);
-  }
-  const diversityIndex = round(clamp(entropy / Math.log2(SECTORS.length), 0, 1), 3);
-  const intensityIndex = total
-    ? round(clamp(blips.slice(0, 5).reduce((s, b) => s + b.score, 0) / Math.min(5, total), 0, 100), 2)
-    : 0;
-  const averageConfidence = total ? round(blips.reduce((s, b) => s + b.confidence, 0) / total, 3) : 0;
-  const netMomentum = total ? round(blips.reduce((s, b) => s + b.momentum, 0) / total, 2) : 0;
-  const topSector = [...sectors].sort((a, b) => b.maxScore - a.maxScore || b.count - a.count)[0]?.sector ?? "geopolitics";
-  const topRegion = regions[0]?.region ?? "Global";
-
-  return {
-    date: snap.date,
-    edition: snap.edition,
-    title: snap.title,
-    subtitle: snap.subtitle,
-    generatedAt: snap.generatedAt,
-    weights,
-    lead: blips[0] ?? null,
-    blips,
-    ranked: blips,
-    items: blips,
-    sectors,
-    regions,
-    metrics: {
-      totalItems: total,
-      intensityIndex,
-      diversityIndex,
-      averageConfidence,
-      netMomentum,
-      topSector,
-      topRegion,
-      ringCounts,
+export const boardIssue: EditorialIssue = {
+  issueId: "2026-11-25-WORLD",
+  editionDate: "2026-11-25",
+  weekday: "Wednesday",
+  datelineLabel: "WEDNESDAY, 25 NOVEMBER 2026",
+  editionNumber: 329,
+  bannerHeadline: "CLIMATE FINANCE, GRID SECURITY AND TRADE CORRIDORS DEFINE GLOBAL AGENDA",
+  subBanner:
+    "World Desk Synthesis: adaptation compacts advance as central banks hold steady and winter energy grids brace for peak load.",
+  leadStoryId: "clim-compact-2026",
+  stories: [
+    {
+      id: "clim-compact-2026",
+      slug: "global-climate-adaptation-compact",
+      desk: "climate",
+      region: "GLOB",
+      headline: "Climate Finance Compact Clears New Adaptation Funding Threshold",
+      deck: "Multilateral lenders and sovereign funds lock in multi-year disbursements for coastal resilience and grid hardening.",
+      dateline: "GENEVA / BELEM",
+      impact: 95,
+      urgency: 89,
+      reach: 94,
+      confidence: 0.96,
+      coordinates: { lat: 46.2044, lon: 6.1432 },
+      tags: ["climate", "finance", "adaptation", "multilateral"],
     },
-  };
+    {
+      id: "econ-rates-hold",
+      slug: "central-banks-synchronized-hold",
+      desk: "economy",
+      region: "AMER",
+      headline: "Major Central Banks Signal Synchronized Rate Hold Into Year-End",
+      deck: "Cooling goods inflation balances sticky services prices as industrial output stabilizes across Atlantic economies.",
+      dateline: "WASHINGTON / FRANKFURT",
+      impact: 91,
+      urgency: 86,
+      reach: 92,
+      confidence: 0.95,
+      coordinates: { lat: 38.9072, lon: -77.0369 },
+      tags: ["rates", "inflation", "markets", "macro"],
+    },
+    {
+      id: "geo-maritime-lanes",
+      slug: "winter-maritime-corridor-accord",
+      desk: "geopolitics",
+      region: "EMEA",
+      headline: "Maritime States Draft Joint Risk Framework for Winter Trade Lanes",
+      deck: "Port authorities and insurers coordinate transit telemetry to curb bottlenecks along key chokepoints.",
+      dateline: "ROTTERDAM / SUEZ",
+      impact: 88,
+      urgency: 87,
+      reach: 85,
+      confidence: 0.93,
+      coordinates: { lat: 51.9244, lon: 4.4777 },
+      tags: ["shipping", "diplomacy", "trade", "logistics"],
+    },
+    {
+      id: "tech-compute-grid",
+      slug: "apac-ai-compute-power-benchmark",
+      desk: "technology",
+      region: "APAC",
+      headline: "Regional Compute Accord Sets Power-Efficiency Rules for Data Centers",
+      deck: "Grid operators across East Asia adopt real-time load shifting to pair hyperscale workloads with clean generation.",
+      dateline: "TOKYO / SINGAPORE",
+      impact: 86,
+      urgency: 81,
+      reach: 88,
+      confidence: 0.94,
+      coordinates: { lat: 35.6762, lon: 139.6503 },
+      tags: ["ai", "energy", "datacenter", "standards"],
+    },
+    {
+      id: "sci-ocean-array",
+      slug: "deep-ocean-thermal-sensor-array",
+      desk: "science",
+      region: "GLOB",
+      headline: "Autonomous Deep-Ocean Array Maps Sub-Surface Thermal Shifts",
+      deck: "Three-basin telemetry network returns continuous profiles showing sharper winter boundary-current gradients.",
+      dateline: "WOODS HOLE / HOBART",
+      impact: 82,
+      urgency: 74,
+      reach: 84,
+      confidence: 0.97,
+      coordinates: { lat: -42.8821, lon: 147.3272 },
+      tags: ["oceanography", "sensors", "climate-science"],
+    },
+    {
+      id: "soc-urban-winter",
+      slug: "megacities-winter-transit-resilience",
+      desk: "society",
+      region: "EMEA",
+      headline: "Northern Megacities Expand District Heating and Storm Transit Plans",
+      deck: "Municipal utilities deploy battery-backed substations ahead of early December cold fronts.",
+      dateline: "HELSINKI / WARSAW",
+      impact: 78,
+      urgency: 80,
+      reach: 79,
+      confidence: 0.92,
+      coordinates: { lat: 60.1699, lon: 24.9384 },
+      tags: ["cities", "transit", "energy-resilience"],
+    },
+    {
+      id: "tech-media-provenance",
+      slug: "broadcast-cryptographic-provenance",
+      desk: "technology",
+      region: "AMER",
+      headline: "Newsrooms Adopt Cryptographic Provenance Standard for Field Imagery",
+      deck: "Wire services integrate hardware-signed capture metadata to verify front-page photojournalism at scale.",
+      dateline: "NEW YORK / TORONTO",
+      impact: 80,
+      urgency: 77,
+      reach: 83,
+      confidence: 0.91,
+      coordinates: { lat: 40.7128, lon: -74.006 },
+      tags: ["media", "verification", "cryptography"],
+    },
+    {
+      id: "econ-minerals-refining",
+      slug: "critical-mineral-refining-alliances",
+      desk: "economy",
+      region: "APAC",
+      headline: "Refining Alliances Diversify Battery and Grid-Metal Supply Chains",
+      deck: "Long-term offtake contracts expand processing capacity in Australia, Southeast Asia, and South America.",
+      dateline: "PERTH / SEOUL",
+      impact: 83,
+      urgency: 75,
+      reach: 81,
+      confidence: 0.92,
+      coordinates: { lat: -31.9505, lon: 115.8605 },
+      tags: ["minerals", "supply-chain", "industry"],
+    },
+  ],
+  tickers: [
+    { symbol: "GLB-EQ", label: "World Equity", value: "3842.6", delta: 0.42, unit: "pts" },
+    { symbol: "BRENT", label: "North Sea Crude", value: "74.18", delta: -0.65, unit: "USD/bbl" },
+    { symbol: "EU-GAS", label: "Winter Gas Hub", value: "38.40", delta: 1.15, unit: "EUR/MWh" },
+    { symbol: "US10Y", label: "10Y Treasury", value: "4.12", delta: -0.04, unit: "%" },
+    { symbol: "BDI", label: "Dry Freight", value: "1648", delta: 0.94, unit: "idx" },
+    { symbol: "CO2-EU", label: "Carbon Permit", value: "71.90", delta: 0.88, unit: "EUR/t" },
+  ],
+};
+
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
 }
 
-export function boardIssue(input?: RadarModel | NewsSnapshot | unknown, options: BoardIssueOptions = {}): BoardIssue {
-  const radar: RadarModel =
-    input && typeof input === "object" && Array.isArray((input as RadarModel).blips) && (input as RadarModel).metrics
-      ? (input as RadarModel)
-      : buildRadar(input);
+function roundTo(value: number, decimals = 4): number {
+  const factor = 10 ** decimals;
+  return Math.round(value * factor) / factor;
+}
 
-  const featuredCount = Math.max(1, Math.round(toNum(options.featuredCount, 3)));
-  const briefCount = Math.max(0, Math.round(toNum(options.briefCount, 6)));
-  const tickerCount = Math.max(1, Math.round(toNum(options.tickerCount, 6)));
-
-  const lead = radar.lead;
-  const featured = radar.blips.slice(1, 1 + featuredCount);
-  const briefs = radar.blips.slice(1 + featuredCount, 1 + featuredCount + briefCount);
-  const tickers = radar.blips
-    .slice(0, tickerCount)
-    .map((b) => `[${SECTOR_LABELS[b.sector].toUpperCase()}] ${b.region}: ${b.title}`);
-
-  const sectorHighlights = radar.sectors
-    .filter((s) => s.topItemId !== null)
-    .map((s) => {
-      const top = radar.blips.find((b) => b.id === s.topItemId);
-      return {
-        sector: s.sector,
-        label: s.label,
-        headline: top ? top.title : "",
-        score: s.maxScore,
-      };
-    })
-    .sort((a, b) => b.score - a.score || a.sector.localeCompare(b.sector));
-
-  const warnings: string[] = [];
-  if (radar.blips.length === 0) warnings.push("No news signals available in snapshot.");
-  if (radar.metrics.diversityIndex < 0.45 && radar.blips.length > 0) {
-    warnings.push("Low sector diversity across ranked stories.");
+export function computeChecksum(payload: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < payload.length; i += 1) {
+    hash ^= payload.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
   }
-  if (radar.metrics.averageConfidence < 0.65 && radar.blips.length > 0) {
-    warnings.push("Average source confidence is below editorial threshold.");
+  return hash.toString(16).padStart(8, "0");
+}
+
+export function scoreStory(story: StorySignal): number {
+  const impact = clamp(story.impact, 0, 100);
+  const urgency = clamp(story.urgency, 0, 100);
+  const reach = clamp(story.reach, 0, 100);
+  const confidence = clamp(story.confidence, 0.5, 1);
+  const base = impact * 0.45 + urgency * 0.3 + reach * 0.25;
+  return roundTo(base * (0.85 + 0.15 * confidence), 2);
+}
+
+export function rankStories(stories: readonly StorySignal[]): RankedStory[] {
+  const sorted = [...stories].sort((a, b) => {
+    const diff = scoreStory(b) - scoreStory(a);
+    if (diff !== 0) return diff;
+    return a.id.localeCompare(b.id);
+  });
+
+  return sorted.map((story, idx) => ({
+    ...story,
+    editorialScore: scoreStory(story),
+    rank: idx + 1,
+    tier: idx === 0 ? "lead" : idx < 4 ? "featured" : "brief",
+  }));
+}
+
+export function buildRadar(
+  issue: EditorialIssue = boardIssue,
+  radius = 1,
+): RadarModel {
+  const safeRadius = clamp(radius, 0.01, 10000);
+  const ranked = rankStories(issue.stories);
+
+  const axes: RadarAxis[] = DESK_ORDER.map((desk, idx) => {
+    const deskStories = ranked.filter((s) => s.desk === desk);
+    const angleRad = roundTo(-Math.PI / 2 + (idx * 2 * Math.PI) / DESK_ORDER.length, 6);
+    const score =
+      deskStories.length === 0
+        ? 0
+        : roundTo(
+            deskStories[0].editorialScore * 0.72 +
+              (deskStories.reduce((acc, s) => acc + s.editorialScore, 0) / deskStories.length) *
+                0.28,
+            2,
+          );
+    const normalized = roundTo(clamp(score / 100, 0, 1), 4);
+    const r = normalized * safeRadius;
+    return {
+      axis: desk,
+      label: DESK_LABELS[desk],
+      score,
+      normalized,
+      storyCount: deskStories.length,
+      topStoryId: deskStories[0]?.id ?? "",
+      angleRad,
+      x: roundTo(Math.cos(angleRad) * r, 4),
+      y: roundTo(Math.sin(angleRad) * r, 4),
+    };
+  });
+
+  const nonZero = axes.filter((a) => a.storyCount > 0);
+  const compositeIndex =
+    nonZero.length === 0
+      ? 0
+      : roundTo(nonZero.reduce((sum, a) => sum + a.score, 0) / nonZero.length, 2);
+
+  let dominantDesk: DeskCategory = DESK_ORDER[0];
+  let bestScore = -1;
+  for (const axis of axes) {
+    if (axis.score > bestScore) {
+      bestScore = axis.score;
+      dominantDesk = axis.axis;
+    }
   }
 
-  const status: BoardIssue["status"] =
-    radar.blips.length === 0 ? "empty" : warnings.length > 0 ? "degraded" : "ready";
+  const regionalHeat: Record<RegionCode, number> = {
+    AMER: 0,
+    EMEA: 0,
+    APAC: 0,
+    GLOB: 0,
+  };
+  for (const region of REGION_ORDER) {
+    const items = ranked.filter((s) => s.region === region);
+    regionalHeat[region] =
+      items.length === 0
+        ? 0
+        : roundTo(items.reduce((sum, s) => sum + s.editorialScore, 0) / items.length, 2);
+  }
 
   return {
-    issueId: `issue-${radar.date}`,
-    date: radar.date,
-    edition: radar.edition,
-    masthead: toStr(options.masthead, "GLOBAL NEWS RADAR"),
-    headline: lead ? lead.title : radar.title,
-    deck: lead ? lead.summary : radar.subtitle,
-    lead,
-    featured,
-    briefs,
-    tickers,
-    sectorHighlights,
-    metrics: radar.metrics,
-    status,
-    warnings,
+    issueId: issue.issueId,
+    editionDate: issue.editionDate,
+    compositeIndex,
+    dominantDesk,
+    axes,
+    polygonPoints: axes.map((a) => ({ x: a.x, y: a.y })),
+    regionalHeat,
   };
 }
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value && typeof value === "object") {
-    const src = value as Record<string, unknown>;
-    const sorted: Record<string, unknown> = {};
-    for (const key of Object.keys(src).sort()) {
-      const v = src[key];
-      if (v !== undefined) sorted[key] = canonicalize(v);
-    }
-    return sorted;
+function buildSnapshotObject(issue: EditorialIssue): NewsSnapshot {
+  const rankedStories = rankStories(issue.stories);
+  if (rankedStories.length === 0) {
+    throw new Error("Editorial issue must contain at least one story");
   }
-  return value;
+  const radar = buildRadar(issue, 1);
+  const core = {
+    format: "editorial-snapshot/1" as const,
+    issueId: issue.issueId,
+    editionDate: issue.editionDate,
+    bannerHeadline: issue.bannerHeadline,
+    leadStory: rankedStories[0],
+    rankedStories,
+    radar,
+    tickers: [...issue.tickers],
+  };
+  const checksum = computeChecksum(JSON.stringify(core));
+  return { ...core, checksum };
 }
 
-export function dataScript(first: unknown, second?: unknown): string {
-  const hasExplicitId = typeof first === "string" && second !== undefined;
-  const rawId = hasExplicitId ? first : typeof second === "string" ? second : "radar-data";
-  const payload = hasExplicitId ? second : first;
-  const safeId = rawId.replace(/[^a-zA-Z0-9_-]/g, "-") || "radar-data";
-  const json = JSON.stringify(canonicalize(payload))
-    .replace(/</g, "\\u003c")
-    .replace(/>/g, "\\u003e")
-    .replace(/&/g, "\\u0026")
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
-  return `<script id="${safeId}" type="application/json">${json}</script>`;
+export function dataScript(issue: EditorialIssue = boardIssue): string {
+  const snapshot = buildSnapshotObject(issue);
+  return JSON.stringify(snapshot, null, 2);
+}
+
+function isDesk(value: unknown): value is DeskCategory {
+  return typeof value === "string" && (DESK_ORDER as readonly string[]).includes(value);
+}
+
+function isRegion(value: unknown): value is RegionCode {
+  return typeof value === "string" && (REGION_ORDER as readonly string[]).includes(value);
+}
+
+function normalizeStory(raw: unknown, index: number): StorySignal {
+  if (!raw || typeof raw !== "object") {
+    throw new Error(`Invalid story entry at index ${index}`);
+  }
+  const s = raw as Record<string, unknown>;
+  const id = typeof s.id === "string" && s.id.trim() ? s.id.trim() : `story-${index + 1}`;
+  const headline = typeof s.headline === "string" ? s.headline.trim() : "";
+  if (!headline) {
+    throw new Error(`Story "${id}" is missing a headline`);
+  }
+  const coords =
+    s.coordinates && typeof s.coordinates === "object"
+      ? (s.coordinates as Record<string, unknown>)
+      : {};
+  return {
+    id,
+    slug: typeof s.slug === "string" && s.slug.trim() ? s.slug.trim() : id,
+    desk: isDesk(s.desk) ? s.desk : "geopolitics",
+    region: isRegion(s.region) ? s.region : "GLOB",
+    headline,
+    deck: typeof s.deck === "string" ? s.deck.trim() : "",
+    dateline: typeof s.dateline === "string" ? s.dateline.trim() : "WORLD DESK",
+    impact: clamp(Number(s.impact ?? 75), 0, 100),
+    urgency: clamp(Number(s.urgency ?? 75), 0, 100),
+    reach: clamp(Number(s.reach ?? 75), 0, 100),
+    confidence: clamp(Number(s.confidence ?? 0.9), 0.5, 1),
+    coordinates: {
+      lat: clamp(Number(coords.lat ?? 0), -90, 90),
+      lon: clamp(Number(coords.lon ?? 0), -180, 180),
+    },
+    tags: Array.isArray(s.tags)
+      ? s.tags.filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+      : [],
+  };
+}
+
+function normalizeTicker(raw: unknown): TickerQuote | null {
+  if (!raw || typeof raw !== "object") return null;
+  const t = raw as Record<string, unknown>;
+  if (typeof t.symbol !== "string" || typeof t.value !== "string") return null;
+  return {
+    symbol: t.symbol.trim(),
+    label: typeof t.label === "string" ? t.label.trim() : t.symbol.trim(),
+    value: t.value.trim(),
+    delta: roundTo(clamp(Number(t.delta ?? 0), -1000, 1000), 4),
+    unit: typeof t.unit === "string" ? t.unit.trim() : "",
+  };
+}
+
+export function parseSnapshot(
+  input: string | Record<string, unknown> = dataScript(boardIssue),
+): NewsSnapshot {
+  let parsed: unknown = input;
+  if (typeof input === "string") {
+    const trimmed = input
+      .trim()
+      .replace(/^(?:export\s+const|const|var|let|window\.[A-Za-z0-9_$]+)\s+[A-Za-z0-9_$]*\s*=\s*/u, "")
+      .replace(/;\s*$/u, "");
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to parse news snapshot JSON: ${msg}`);
+    }
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Snapshot payload must be an object");
+  }
+  const obj = parsed as Record<string, unknown>;
+  const rawStories = Array.isArray(obj.rankedStories)
+    ? obj.rankedStories
+    : Array.isArray(obj.stories)
+      ? obj.stories
+      : null;
+
+  if (!rawStories || rawStories.length === 0) {
+    throw new Error("Snapshot payload contains no stories");
+  }
+
+  const stories = rawStories.map((entry, idx) => normalizeStory(entry, idx));
+  const rawTickers = Array.isArray(obj.tickers) ? obj.tickers : boardIssue.tickers;
+  const tickers = rawTickers
+    .map((entry) => normalizeTicker(entry))
+    .filter((entry): entry is TickerQuote => entry !== null);
+
+  const issue: EditorialIssue = {
+    issueId:
+      typeof obj.issueId === "string" && obj.issueId.trim()
+        ? obj.issueId.trim()
+        : boardIssue.issueId,
+    editionDate:
+      typeof obj.editionDate === "string" && obj.editionDate.trim()
+        ? obj.editionDate.trim()
+        : boardIssue.editionDate,
+    weekday: typeof obj.weekday === "string" ? obj.weekday : boardIssue.weekday,
+    datelineLabel:
+      typeof obj.datelineLabel === "string" ? obj.datelineLabel : boardIssue.datelineLabel,
+    editionNumber: Number.isFinite(Number(obj.editionNumber))
+      ? Math.trunc(Number(obj.editionNumber))
+      : boardIssue.editionNumber,
+    bannerHeadline:
+      typeof obj.bannerHeadline === "string" && obj.bannerHeadline.trim()
+        ? obj.bannerHeadline.trim()
+        : boardIssue.bannerHeadline,
+    subBanner: typeof obj.subBanner === "string" ? obj.subBanner : boardIssue.subBanner,
+    leadStoryId: stories[0].id,
+    stories,
+    tickers,
+  };
+
+  return buildSnapshotObject(issue);
 }

@@ -1,91 +1,107 @@
 import { deflateSync } from "node:zlib";
 
-export type RGBA = readonly [number, number, number, number];
-export type Point = readonly [number, number] | { readonly x: number; readonly y: number };
+export interface RGBA {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+}
+
 export interface ColorStop {
-  readonly offset: number;
-  readonly color: RGBA;
+  offset: number;
+  color: RGBA;
 }
 
-const CRC_TABLE = new Uint32Array(256);
-for (let i = 0; i < 256; i++) {
-  let c = i;
-  for (let k = 0; k < 8; k++) c = (c & 1) !== 0 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-  CRC_TABLE[i] = c >>> 0;
+export interface TextOptions {
+  scale?: number;
+  align?: "left" | "center" | "right";
+  letterSpacing?: number;
+  lineHeight?: number;
+  bold?: boolean;
+  shadowColor?: RGBA;
+  shadowOffsetX?: number;
+  shadowOffsetY?: number;
 }
 
-function clamp(v: number, lo: number, hi: number): number {
+export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
-function clampByte(v: number): number {
-  return v <= 0 ? 0 : v >= 255 ? 255 : Math.round(v);
-}
-
-function ptX(p: Point): number {
-  return Array.isArray(p) ? p[0] : (p as { readonly x: number }).x;
-}
-
-function ptY(p: Point): number {
-  return Array.isArray(p) ? p[1] : (p as { readonly y: number }).y;
-}
-
 export function rgba(r: number, g: number, b: number, a = 255): RGBA {
-  return [clampByte(r), clampByte(g), clampByte(b), clampByte(a)];
+  return {
+    r: clamp(Math.round(r), 0, 255),
+    g: clamp(Math.round(g), 0, 255),
+    b: clamp(Math.round(b), 0, 255),
+    a: clamp(Math.round(a), 0, 255),
+  };
 }
 
-export function hex(input: string, alpha?: number): RGBA {
-  const s = input.startsWith("#") ? input.slice(1) : input;
+export function hex(code: string, alpha = 255): RGBA {
+  const s = code.startsWith("#") ? code.slice(1) : code;
   if (s.length === 3) {
-    const r = parseInt(s[0] + s[0], 16);
-    const g = parseInt(s[1] + s[1], 16);
-    const b = parseInt(s[2] + s[2], 16);
-    return [r, g, b, alpha === undefined ? 255 : clampByte(alpha)];
+    return rgba(
+      parseInt(s[0] + s[0], 16),
+      parseInt(s[1] + s[1], 16),
+      parseInt(s[2] + s[2], 16),
+      alpha,
+    );
   }
-  const r = parseInt(s.slice(0, 2), 16) || 0;
-  const g = parseInt(s.slice(2, 4), 16) || 0;
-  const b = parseInt(s.slice(4, 6), 16) || 0;
-  const a = alpha !== undefined ? clampByte(alpha) : s.length >= 8 ? parseInt(s.slice(6, 8), 16) : 255;
-  return [r, g, b, a];
+  const r = parseInt(s.slice(0, 2), 16);
+  const g = parseInt(s.slice(2, 4), 16);
+  const b = parseInt(s.slice(4, 6), 16);
+  const a = s.length >= 8 ? parseInt(s.slice(6, 8), 16) : alpha;
+  return rgba(r, g, b, a);
 }
 
-export function lerpColor(c0: RGBA, c1: RGBA, t: number): RGBA {
-  const u = clamp(t, 0, 1);
-  return [
-    clampByte(c0[0] + (c1[0] - c0[0]) * u),
-    clampByte(c0[1] + (c1[1] - c0[1]) * u),
-    clampByte(c0[2] + (c1[2] - c0[2]) * u),
-    clampByte(c0[3] + (c1[3] - c0[3]) * u),
-  ];
+export function lerpColor(c1: RGBA, c2: RGBA, t: number): RGBA {
+  const k = clamp(t, 0, 1);
+  return {
+    r: Math.round(c1.r + (c2.r - c1.r) * k),
+    g: Math.round(c1.g + (c2.g - c1.g) * k),
+    b: Math.round(c1.b + (c2.b - c1.b) * k),
+    a: Math.round(c1.a + (c2.a - c1.a) * k),
+  };
 }
 
-export function sampleStops(stops: readonly ColorStop[], t: number): RGBA {
-  if (stops.length === 0) return [0, 0, 0, 0];
-  const u = clamp(t, 0, 1);
-  if (u <= stops[0].offset) return stops[0].color;
-  for (let i = 1; i < stops.length; i++) {
-    const prev = stops[i - 1];
-    const curr = stops[i];
-    if (u <= curr.offset) {
-      const span = curr.offset - prev.offset;
-      return lerpColor(prev.color, curr.color, span > 1e-9 ? (u - prev.offset) / span : 1);
+export function sampleGradient(stops: ColorStop[], t: number): RGBA {
+  if (stops.length === 0) return { r: 0, g: 0, b: 0, a: 255 };
+  if (stops.length === 1 || t <= stops[0].offset) return stops[0].color;
+  const last = stops[stops.length - 1];
+  if (t >= last.offset) return last.color;
+  for (let i = 0; i < stops.length - 1; i++) {
+    const a = stops[i];
+    const b = stops[i + 1];
+    if (t >= a.offset && t <= b.offset) {
+      const span = b.offset - a.offset;
+      return lerpColor(a.color, b.color, span > 0 ? (t - a.offset) / span : 0);
     }
   }
-  return stops[stops.length - 1].color;
+  return last.color;
 }
 
-function crc32(buf: Uint8Array, start: number, end: number): number {
+const CRC_TABLE = new Uint32Array(256);
+for (let n = 0; n < 256; n++) {
+  let c = n;
+  for (let k = 0; k < 8; k++) {
+    c = (c & 1) !== 0 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  }
+  CRC_TABLE[n] = c >>> 0;
+}
+
+function crc32(buf: Uint8Array): number {
   let c = 0xffffffff;
-  for (let i = start; i < end; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  for (let i = 0; i < buf.length; i++) {
+    c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  }
   return (c ^ 0xffffffff) >>> 0;
 }
 
-function makeChunk(type: string, payload: Uint8Array): Buffer {
+function pngChunk(type: string, payload: Uint8Array): Buffer {
   const out = Buffer.allocUnsafe(12 + payload.length);
   out.writeUInt32BE(payload.length, 0);
   out.write(type, 4, 4, "ascii");
-  if (payload.length > 0) out.set(payload, 8);
-  out.writeUInt32BE(crc32(out, 4, 8 + payload.length), 8 + payload.length);
+  out.set(payload, 8);
+  out.writeUInt32BE(crc32(out.subarray(4, 8 + payload.length)), 8 + payload.length);
   return out;
 }
 
@@ -97,218 +113,227 @@ function paeth(a: number, b: number, c: number): number {
   return pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
 }
 
-export function encodePNG(width: number, height: number, pixels: Uint8Array): Buffer {
-  if (pixels.length < width * height * 4) {
-    throw new Error(`Pixel buffer too small: expected ${width * height * 4}, got ${pixels.length}`);
+export function encodePng(width: number, height: number, pixels: Uint8Array): Buffer {
+  if (pixels.length !== width * height * 4) {
+    throw new Error(`Expected ${width * height * 4} RGBA bytes, got ${pixels.length}`);
   }
   let opaque = true;
-  for (let i = 3; i < width * height * 4; i += 4) {
+  for (let i = 3; i < pixels.length; i += 4) {
     if (pixels[i] !== 255) {
       opaque = false;
       break;
     }
   }
   const bpp = opaque ? 3 : 4;
-  const colorType = opaque ? 2 : 6;
-  const stride = width * bpp;
-  const filtered = Buffer.allocUnsafe(height * (stride + 1));
-  const cur = new Uint8Array(stride);
-  const prev = new Uint8Array(stride);
-  const cand = [
-    new Uint8Array(stride),
-    new Uint8Array(stride),
-    new Uint8Array(stride),
-    new Uint8Array(stride),
-    new Uint8Array(stride),
-  ];
-
-  for (let y = 0; y < height; y++) {
-    const srcRow = y * width * 4;
-    if (opaque) {
-      for (let x = 0, si = srcRow, di = 0; x < width; x++, si += 4, di += 3) {
-        cur[di] = pixels[si];
-        cur[di + 1] = pixels[si + 1];
-        cur[di + 2] = pixels[si + 2];
-      }
-    } else {
-      cur.set(pixels.subarray(srcRow, srcRow + stride));
+  const rowBytes = width * bpp;
+  const raw = new Uint8Array(height * rowBytes);
+  if (opaque) {
+    for (let s = 0, d = 0; s < pixels.length; s += 4, d += 3) {
+      raw[d] = pixels[s];
+      raw[d + 1] = pixels[s + 1];
+      raw[d + 2] = pixels[s + 2];
     }
+  } else {
+    raw.set(pixels);
+  }
 
-    let bestF = 0;
+  const filtered = new Uint8Array(height * (rowBytes + 1));
+  const cand = new Uint8Array(rowBytes);
+  const best = new Uint8Array(rowBytes);
+  for (let y = 0; y < height; y++) {
+    const rowOff = y * rowBytes;
+    const prevOff = (y - 1) * rowBytes;
+    let bestType = 0;
     let bestScore = Infinity;
     for (let f = 0; f < 5; f++) {
-      const dst = cand[f];
       let score = 0;
-      for (let i = 0; i < stride; i++) {
-        const raw = cur[i];
-        const a = i >= bpp ? cur[i - bpp] : 0;
-        const b = prev[i];
-        const c = i >= bpp ? prev[i - bpp] : 0;
-        let v = raw;
-        if (f === 1) v = (raw - a) & 0xff;
-        else if (f === 2) v = (raw - b) & 0xff;
-        else if (f === 3) v = (raw - ((a + b) >> 1)) & 0xff;
-        else if (f === 4) v = (raw - paeth(a, b, c)) & 0xff;
-        dst[i] = v;
+      for (let i = 0; i < rowBytes; i++) {
+        const cur = raw[rowOff + i];
+        const a = i >= bpp ? raw[rowOff + i - bpp] : 0;
+        const b = y > 0 ? raw[prevOff + i] : 0;
+        const c = y > 0 && i >= bpp ? raw[prevOff + i - bpp] : 0;
+        let v = cur;
+        if (f === 1) v = (cur - a) & 0xff;
+        else if (f === 2) v = (cur - b) & 0xff;
+        else if (f === 3) v = (cur - ((a + b) >> 1)) & 0xff;
+        else if (f === 4) v = (cur - paeth(a, b, c)) & 0xff;
+        cand[i] = v;
         score += v < 128 ? v : 256 - v;
       }
       if (score < bestScore) {
         bestScore = score;
-        bestF = f;
+        bestType = f;
+        best.set(cand);
       }
     }
-
-    const rowOut = y * (stride + 1);
-    filtered[rowOut] = bestF;
-    filtered.set(cand[bestF], rowOut + 1);
-    prev.set(cur);
+    const outOff = y * (rowBytes + 1);
+    filtered[outOff] = bestType;
+    filtered.set(best, outOff + 1);
   }
 
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
   ihdr[8] = 8;
-  ihdr[9] = colorType;
-  ihdr[10] = 0;
-  ihdr[11] = 0;
-  ihdr[12] = 0;
-
-  const compressed = deflateSync(filtered, { level: 9 });
+  ihdr[9] = opaque ? 2 : 6;
   const sig = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-  return Buffer.concat([sig, makeChunk("IHDR", ihdr), makeChunk("IDAT", compressed), makeChunk("IEND", Buffer.alloc(0))]);
+  const idat = deflateSync(filtered, { level: 9 });
+  return Buffer.concat([sig, pngChunk("IHDR", ihdr), pngChunk("IDAT", idat), pngChunk("IEND", Buffer.alloc(0))]);
 }
 
-export const encodePng = encodePNG;
+// 5x7 crisp bitmap font for printable ASCII 32..126; each char is 7 base-32 rows (5 bits each).
+const FONT_5X7: string[] = [
+  "0000000", "4444404", "aa00000", "aavavaa", "4fke5u4", "pq48bj0", "cikclid", "4480000",
+  "2488842", "8422248", "04lel40", "044v440", "0000cc8", "000v000", "00000cc", "122488g",
+  "ejllphe", "4c4444e", "eh168gv", "eh161he", "26aiv22", "vgu11he", "68guhhe", "v124888",
+  "ehhehhe", "ehhf12c", "00c00c0", "00c00c8", "248g842", "00v0v00", "8421248", "eh12404",
+  "ehjnmgf", "ehhvhhh", "uhhuhhu", "ehggghe", "uhhhhhu", "vgguggv", "vgguggg", "ehggjhf",
+  "hhhvhhh", "e44444e", "72222ic", "hikokih", "ggggggv", "hrllhhh", "hhpljhh", "ehhhhhe",
+  "uhhuggg", "ehhhlid", "uhhukih", "ehge1he", "v444444", "hhhhhhe", "hhhhha4", "hhhllla",
+  "hha4ahh", "hha4444", "v1248gv", "e88888e", "g884221", "e22222e", "4ah0000", "000000v",
+  "8400000", "00e1fhf", "gguhhhu", "00egghe", "11fhhhf", "00ehvge", "68u8888", "00fhf1e",
+  "gguhhhh", "40c444e", "20622ic", "ggikoki", "c44444e", "00qlllh", "00uhhhh", "00ehhhe",
+  "00uhhug", "00fhhf1", "00moggg", "00fge1u", "88u8886", "00hhhhf", "00hhha4", "00hhlla",
+  "00ha4ah", "00hhf1e", "00v248v", "6448446", "4444444", "c44244c", "00di000",
+];
+
+function glyphRows(ch: string): string {
+  const code = ch.charCodeAt(0);
+  if (code >= 32 && code <= 126) return FONT_5X7[code - 32];
+  if (ch === "\u2014" || ch === "\u2013") return FONT_5X7[45 - 32];
+  if (ch === "\u2018" || ch === "\u2019") return FONT_5X7[39 - 32];
+  if (ch === "\u201c" || ch === "\u201d") return FONT_5X7[34 - 32];
+  if (ch === "\u2022") return "004e400";
+  return FONT_5X7[63 - 32];
+}
 
 export class Canvas {
   readonly width: number;
   readonly height: number;
   readonly data: Uint8Array;
 
-  constructor(width: number, height: number, bg: RGBA = [0, 0, 0, 255]) {
-    this.width = width;
-    this.height = height;
-    this.data = new Uint8Array(width * height * 4);
-    this.clear(bg);
+  constructor(width: number, height: number, bg?: RGBA) {
+    this.width = Math.max(1, Math.floor(width));
+    this.height = Math.max(1, Math.floor(height));
+    this.data = new Uint8Array(this.width * this.height * 4);
+    if (bg) this.clear(bg);
   }
 
-  clear(color: RGBA): void {
-    const [r, g, b, a] = color;
-    const d = this.data;
-    for (let i = 0; i < d.length; i += 4) {
-      d[i] = r;
-      d[i + 1] = g;
-      d[i + 2] = b;
-      d[i + 3] = a;
+  clear(c: RGBA): void {
+    for (let i = 0; i < this.data.length; i += 4) {
+      this.data[i] = c.r;
+      this.data[i + 1] = c.g;
+      this.data[i + 2] = c.b;
+      this.data[i + 3] = c.a;
     }
   }
 
-  setPixel(x: number, y: number, color: RGBA): void {
-    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return;
-    const i = (y * this.width + x) * 4;
-    this.data[i] = color[0];
-    this.data[i + 1] = color[1];
-    this.data[i + 2] = color[2];
-    this.data[i + 3] = color[3];
+  setPixel(x: number, y: number, c: RGBA): void {
+    const ix = x | 0;
+    const iy = y | 0;
+    if (ix < 0 || iy < 0 || ix >= this.width || iy >= this.height) return;
+    const idx = (iy * this.width + ix) * 4;
+    this.data[idx] = c.r;
+    this.data[idx + 1] = c.g;
+    this.data[idx + 2] = c.b;
+    this.data[idx + 3] = c.a;
   }
 
   getPixel(x: number, y: number): RGBA {
-    if (x < 0 || x >= this.width || y < 0 || y >= this.height) return [0, 0, 0, 0];
-    const i = (y * this.width + x) * 4;
-    return [this.data[i], this.data[i + 1], this.data[i + 2], this.data[i + 3]];
+    const ix = clamp(x | 0, 0, this.width - 1);
+    const iy = clamp(y | 0, 0, this.height - 1);
+    const idx = (iy * this.width + ix) * 4;
+    return { r: this.data[idx], g: this.data[idx + 1], b: this.data[idx + 2], a: this.data[idx + 3] };
   }
 
-  blendPixel(x: number, y: number, color: RGBA, coverage = 1): void {
-    if (x < 0 || x >= this.width || y < 0 || y >= this.height || coverage <= 0) return;
-    const sa = (color[3] / 255) * (coverage >= 1 ? 1 : coverage);
+  blendPixel(x: number, y: number, c: RGBA, alphaScale = 1): void {
+    const ix = x | 0;
+    const iy = y | 0;
+    if (ix < 0 || iy < 0 || ix >= this.width || iy >= this.height) return;
+    const sa = (c.a / 255) * clamp(alphaScale, 0, 1);
     if (sa <= 0) return;
-    const i = (y * this.width + x) * 4;
-    const d = this.data;
-    if (sa >= 0.9999) {
-      d[i] = color[0];
-      d[i + 1] = color[1];
-      d[i + 2] = color[2];
-      d[i + 3] = 255;
+    const idx = (iy * this.width + ix) * 4;
+    if (sa >= 0.999) {
+      this.data[idx] = c.r;
+      this.data[idx + 1] = c.g;
+      this.data[idx + 2] = c.b;
+      this.data[idx + 3] = 255;
       return;
     }
-    const da = d[i + 3] / 255;
-    const invSa = 1 - sa;
-    const oa = sa + da * invSa;
-    if (oa <= 0) return;
-    const invOa = 1 / oa;
-    d[i] = clampByte((color[0] * sa + d[i] * da * invSa) * invOa);
-    d[i + 1] = clampByte((color[1] * sa + d[i + 1] * da * invSa) * invOa);
-    d[i + 2] = clampByte((color[2] * sa + d[i + 2] * da * invSa) * invOa);
-    d[i + 3] = clampByte(oa * 255);
+    const da = this.data[idx + 3] / 255;
+    const outA = sa + da * (1 - sa);
+    if (outA <= 0) return;
+    const inv = 1 / outA;
+    this.data[idx] = Math.round((c.r * sa + this.data[idx] * da * (1 - sa)) * inv);
+    this.data[idx + 1] = Math.round((c.g * sa + this.data[idx + 1] * da * (1 - sa)) * inv);
+    this.data[idx + 2] = Math.round((c.b * sa + this.data[idx + 2] * da * (1 - sa)) * inv);
+    this.data[idx + 3] = Math.round(outA * 255);
   }
 
-  fillRect(x: number, y: number, w: number, h: number, color: RGBA): void {
+  fillRect(x: number, y: number, w: number, h: number, c: RGBA): void {
     const x0 = Math.max(0, Math.floor(x));
     const y0 = Math.max(0, Math.floor(y));
-    const x1 = Math.min(this.width - 1, Math.ceil(x + w) - 1);
-    const y1 = Math.min(this.height - 1, Math.ceil(y + h) - 1);
-    for (let py = y0; py <= y1; py++) {
-      const cy = clamp(Math.min(py + 1, y + h) - Math.max(py, y), 0, 1);
-      for (let px = x0; px <= x1; px++) {
-        const cx = clamp(Math.min(px + 1, x + w) - Math.max(px, x), 0, 1);
-        this.blendPixel(px, py, color, cx * cy);
-      }
+    const x1 = Math.min(this.width, Math.ceil(x + w));
+    const y1 = Math.min(this.height, Math.ceil(y + h));
+    for (let py = y0; py < y1; py++) {
+      for (let px = x0; px < x1; px++) this.blendPixel(px, py, c);
     }
   }
 
-  strokeRect(x: number, y: number, w: number, h: number, lineWidth: number, color: RGBA): void {
-    this.strokeRoundedRect(x, y, w, h, 0, lineWidth, color);
+  strokeRect(x: number, y: number, w: number, h: number, c: RGBA, thickness = 1): void {
+    const t = Math.max(1, thickness);
+    this.fillRect(x, y, w, t, c);
+    this.fillRect(x, y + h - t, w, t, c);
+    this.fillRect(x, y + t, t, Math.max(0, h - 2 * t), c);
+    this.fillRect(x + w - t, y + t, t, Math.max(0, h - 2 * t), c);
   }
 
-  fillRoundedRect(x: number, y: number, w: number, h: number, radius: number, color: RGBA): void {
+  fillRoundedRect(x: number, y: number, w: number, h: number, radius: number, c: RGBA): void {
     const r = clamp(radius, 0, Math.min(w, h) * 0.5);
-    const cx = x + w * 0.5;
-    const cy = y + h * 0.5;
-    const bx = w * 0.5 - r;
-    const by = h * 0.5 - r;
     const x0 = Math.max(0, Math.floor(x - 1));
     const y0 = Math.max(0, Math.floor(y - 1));
     const x1 = Math.min(this.width - 1, Math.ceil(x + w + 1));
     const y1 = Math.min(this.height - 1, Math.ceil(y + h + 1));
+    const cx = x + w * 0.5;
+    const cy = y + h * 0.5;
+    const hx = w * 0.5 - r;
+    const hy = h * 0.5 - r;
     for (let py = y0; py <= y1; py++) {
-      const qy = Math.abs(py + 0.5 - cy) - by;
-      const my = qy > 0 ? qy : 0;
+      const qy = Math.abs(py + 0.5 - cy) - hy;
       for (let px = x0; px <= x1; px++) {
-        const qx = Math.abs(px + 0.5 - cx) - bx;
-        const mx = qx > 0 ? qx : 0;
-        const dist = Math.hypot(mx, my) + Math.min(Math.max(qx, qy), 0) - r;
-        const cov = clamp(0.5 - dist, 0, 1);
-        if (cov > 0) this.blendPixel(px, py, color, cov);
+        const qx = Math.abs(px + 0.5 - cx) - hx;
+        const d = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
+        if (d <= -0.5) this.blendPixel(px, py, c);
+        else if (d < 0.5) this.blendPixel(px, py, c, 0.5 - d);
       }
     }
   }
 
-  strokeRoundedRect(x: number, y: number, w: number, h: number, radius: number, lineWidth: number, color: RGBA): void {
+  strokeRoundedRect(x: number, y: number, w: number, h: number, radius: number, c: RGBA, thickness = 1): void {
     const r = clamp(radius, 0, Math.min(w, h) * 0.5);
-    const hw = lineWidth * 0.5;
-    const cx = x + w * 0.5;
-    const cy = y + h * 0.5;
-    const bx = w * 0.5 - r;
-    const by = h * 0.5 - r;
-    const pad = Math.ceil(hw + 1);
+    const half = Math.max(0.5, thickness * 0.5);
+    const pad = Math.ceil(half + 1);
     const x0 = Math.max(0, Math.floor(x - pad));
     const y0 = Math.max(0, Math.floor(y - pad));
     const x1 = Math.min(this.width - 1, Math.ceil(x + w + pad));
     const y1 = Math.min(this.height - 1, Math.ceil(y + h + pad));
+    const cx = x + w * 0.5;
+    const cy = y + h * 0.5;
+    const hx = w * 0.5 - r;
+    const hy = h * 0.5 - r;
     for (let py = y0; py <= y1; py++) {
-      const qy = Math.abs(py + 0.5 - cy) - by;
-      const my = qy > 0 ? qy : 0;
+      const qy = Math.abs(py + 0.5 - cy) - hy;
       for (let px = x0; px <= x1; px++) {
-        const qx = Math.abs(px + 0.5 - cx) - bx;
-        const mx = qx > 0 ? qx : 0;
-        const dist = Math.hypot(mx, my) + Math.min(Math.max(qx, qy), 0) - r;
-        const cov = clamp(0.5 - (Math.abs(dist) - hw), 0, 1);
-        if (cov > 0) this.blendPixel(px, py, color, cov);
+        const qx = Math.abs(px + 0.5 - cx) - hx;
+        const sdf = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
+        const d = Math.abs(sdf) - half;
+        if (d <= -0.5) this.blendPixel(px, py, c);
+        else if (d < 0.5) this.blendPixel(px, py, c, 0.5 - d);
       }
     }
   }
 
-  fillCircle(cx: number, cy: number, r: number, color: RGBA): void {
+  fillCircle(cx: number, cy: number, r: number, c: RGBA): void {
     const x0 = Math.max(0, Math.floor(cx - r - 1));
     const y0 = Math.max(0, Math.floor(cy - r - 1));
     const x1 = Math.min(this.width - 1, Math.ceil(cx + r + 1));
@@ -316,296 +341,239 @@ export class Canvas {
     for (let py = y0; py <= y1; py++) {
       const dy = py + 0.5 - cy;
       for (let px = x0; px <= x1; px++) {
-        const dist = Math.hypot(px + 0.5 - cx, dy) - r;
-        const cov = clamp(0.5 - dist, 0, 1);
-        if (cov > 0) this.blendPixel(px, py, color, cov);
+        const d = Math.hypot(px + 0.5 - cx, dy) - r;
+        if (d <= -0.5) this.blendPixel(px, py, c);
+        else if (d < 0.5) this.blendPixel(px, py, c, 0.5 - d);
       }
     }
   }
 
-  strokeCircle(cx: number, cy: number, r: number, lineWidth: number, color: RGBA): void {
-    const hw = lineWidth * 0.5;
-    const x0 = Math.max(0, Math.floor(cx - r - hw - 1));
-    const y0 = Math.max(0, Math.floor(cy - r - hw - 1));
-    const x1 = Math.min(this.width - 1, Math.ceil(cx + r + hw + 1));
-    const y1 = Math.min(this.height - 1, Math.ceil(cy + r + hw + 1));
+  strokeCircle(cx: number, cy: number, r: number, c: RGBA, thickness = 1): void {
+    const half = Math.max(0.5, thickness * 0.5);
+    const pad = r + half + 1;
+    const x0 = Math.max(0, Math.floor(cx - pad));
+    const y0 = Math.max(0, Math.floor(cy - pad));
+    const x1 = Math.min(this.width - 1, Math.ceil(cx + pad));
+    const y1 = Math.min(this.height - 1, Math.ceil(cy + pad));
     for (let py = y0; py <= y1; py++) {
       const dy = py + 0.5 - cy;
       for (let px = x0; px <= x1; px++) {
-        const dist = Math.abs(Math.hypot(px + 0.5 - cx, dy) - r) - hw;
-        const cov = clamp(0.5 - dist, 0, 1);
-        if (cov > 0) this.blendPixel(px, py, color, cov);
+        const d = Math.abs(Math.hypot(px + 0.5 - cx, dy) - r) - half;
+        if (d <= -0.5) this.blendPixel(px, py, c);
+        else if (d < 0.5) this.blendPixel(px, py, c, 0.5 - d);
       }
     }
   }
 
-  fillEllipse(cx: number, cy: number, rx: number, ry: number, color: RGBA): void {
+  fillEllipse(cx: number, cy: number, rx: number, ry: number, c: RGBA): void {
     if (rx <= 0 || ry <= 0) return;
     const x0 = Math.max(0, Math.floor(cx - rx - 1));
     const y0 = Math.max(0, Math.floor(cy - ry - 1));
     const x1 = Math.min(this.width - 1, Math.ceil(cx + rx + 1));
     const y1 = Math.min(this.height - 1, Math.ceil(cy + ry + 1));
-    const invRx = 1 / rx;
-    const invRy = 1 / ry;
+    const minR = Math.min(rx, ry);
     for (let py = y0; py <= y1; py++) {
-      const ny = (py + 0.5 - cy) * invRy;
+      const ny = (py + 0.5 - cy) / ry;
       for (let px = x0; px <= x1; px++) {
-        const nx = (px + 0.5 - cx) * invRx;
-        const k = Math.hypot(nx, ny);
-        if (k < 1e-6) {
-          this.blendPixel(px, py, color, 1);
-          continue;
-        }
-        const grad = Math.hypot(nx * invRx, ny * invRy) / k;
-        const dist = (k - 1) / grad;
-        const cov = clamp(0.5 - dist, 0, 1);
-        if (cov > 0) this.blendPixel(px, py, color, cov);
+        const nx = (px + 0.5 - cx) / rx;
+        const d = (Math.hypot(nx, ny) - 1) * minR;
+        if (d <= -0.5) this.blendPixel(px, py, c);
+        else if (d < 0.5) this.blendPixel(px, py, c, 0.5 - d);
       }
     }
   }
 
-  strokeEllipse(cx: number, cy: number, rx: number, ry: number, lineWidth: number, color: RGBA): void {
-    if (rx <= 0 || ry <= 0) return;
-    const hw = lineWidth * 0.5;
-    const x0 = Math.max(0, Math.floor(cx - rx - hw - 1));
-    const y0 = Math.max(0, Math.floor(cy - ry - hw - 1));
-    const x1 = Math.min(this.width - 1, Math.ceil(cx + rx + hw + 1));
-    const y1 = Math.min(this.height - 1, Math.ceil(cy + ry + hw + 1));
-    const invRx = 1 / rx;
-    const invRy = 1 / ry;
-    for (let py = y0; py <= y1; py++) {
-      const ny = (py + 0.5 - cy) * invRy;
-      for (let px = x0; px <= x1; px++) {
-        const nx = (px + 0.5 - cx) * invRx;
-        const k = Math.hypot(nx, ny);
-        if (k < 1e-6) continue;
-        const grad = Math.hypot(nx * invRx, ny * invRy) / k;
-        const dist = Math.abs((k - 1) / grad) - hw;
-        const cov = clamp(0.5 - dist, 0, 1);
-        if (cov > 0) this.blendPixel(px, py, color, cov);
-      }
-    }
-  }
-
-  drawLine(x0: number, y0: number, x1: number, y1: number, lineWidth: number, color: RGBA): void {
-    const rad = lineWidth * 0.5;
-    const minX = Math.max(0, Math.floor(Math.min(x0, x1) - rad - 1));
-    const minY = Math.max(0, Math.floor(Math.min(y0, y1) - rad - 1));
-    const maxX = Math.min(this.width - 1, Math.ceil(Math.max(x0, x1) + rad + 1));
-    const maxY = Math.min(this.height - 1, Math.ceil(Math.max(y0, y1) + rad + 1));
+  drawLine(x0: number, y0: number, x1: number, y1: number, c: RGBA, thickness = 1): void {
+    const half = Math.max(0.5, thickness * 0.5);
+    const pad = half + 1;
+    const minX = Math.max(0, Math.floor(Math.min(x0, x1) - pad));
+    const maxX = Math.min(this.width - 1, Math.ceil(Math.max(x0, x1) + pad));
+    const minY = Math.max(0, Math.floor(Math.min(y0, y1) - pad));
+    const maxY = Math.min(this.height - 1, Math.ceil(Math.max(y0, y1) + pad));
     const dx = x1 - x0;
     const dy = y1 - y0;
-    const len2 = dx * dx + dy * dy;
+    const lenSq = dx * dx + dy * dy;
     for (let py = minY; py <= maxY; py++) {
-      const ry = py + 0.5 - y0;
       for (let px = minX; px <= maxX; px++) {
         const rx = px + 0.5 - x0;
-        const t = len2 > 1e-8 ? clamp((rx * dx + ry * dy) / len2, 0, 1) : 0;
-        const dist = Math.hypot(rx - t * dx, ry - t * dy) - rad;
-        const cov = clamp(0.5 - dist, 0, 1);
-        if (cov > 0) this.blendPixel(px, py, color, cov);
+        const ry = py + 0.5 - y0;
+        const t = lenSq > 0 ? clamp((rx * dx + ry * dy) / lenSq, 0, 1) : 0;
+        const d = Math.hypot(rx - dx * t, ry - dy * t) - half;
+        if (d <= -0.5) this.blendPixel(px, py, c);
+        else if (d < 0.5) this.blendPixel(px, py, c, 0.5 - d);
       }
     }
   }
 
-  drawPolyline(points: readonly Point[], lineWidth: number, color: RGBA, closed = false): void {
+  drawPolyline(points: Array<[number, number]>, c: RGBA, thickness = 1, closed = false): void {
     if (points.length < 2) return;
     for (let i = 0; i < points.length - 1; i++) {
-      this.drawLine(ptX(points[i]), ptY(points[i]), ptX(points[i + 1]), ptY(points[i + 1]), lineWidth, color);
+      this.drawLine(points[i][0], points[i][1], points[i + 1][0], points[i + 1][1], c, thickness);
     }
     if (closed && points.length > 2) {
       const last = points[points.length - 1];
-      this.drawLine(ptX(last), ptY(last), ptX(points[0]), ptY(points[0]), lineWidth, color);
+      this.drawLine(last[0], last[1], points[0][0], points[0][1], c, thickness);
     }
   }
 
-  drawArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number, lineWidth: number, color: RGBA): void {
-    const span = endAngle - startAngle;
-    const steps = Math.max(8, Math.ceil((Math.abs(span) * Math.max(r, 1)) / 2));
-    const pts: [number, number][] = [];
+  drawArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number, c: RGBA, thickness = 1): void {
+    const span = Math.abs(endAngle - startAngle);
+    const steps = Math.max(8, Math.ceil((span * Math.max(r, 8)) / 4));
+    const pts: Array<[number, number]> = [];
     for (let i = 0; i <= steps; i++) {
-      const a = startAngle + (span * i) / steps;
+      const a = startAngle + ((endAngle - startAngle) * i) / steps;
       pts.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
     }
-    this.drawPolyline(pts, lineWidth, color, false);
+    this.drawPolyline(pts, c, thickness, false);
   }
 
-  drawQuadBezier(x0: number, y0: number, cx: number, cy: number, x1: number, y1: number, lineWidth: number, color: RGBA): void {
-    const approx = Math.hypot(cx - x0, cy - y0) + Math.hypot(x1 - cx, y1 - cy);
-    const steps = Math.max(8, Math.ceil(approx / 2.5));
-    const pts: [number, number][] = [];
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const u = 1 - t;
-      pts.push([u * u * x0 + 2 * u * t * cx + t * t * x1, u * u * y0 + 2 * u * t * cy + t * t * y1]);
-    }
-    this.drawPolyline(pts, lineWidth, color, false);
-  }
-
-  drawCubicBezier(
-    x0: number,
-    y0: number,
-    cx0: number,
-    cy0: number,
-    cx1: number,
-    cy1: number,
-    x1: number,
-    y1: number,
-    lineWidth: number,
-    color: RGBA,
-  ): void {
-    const approx = Math.hypot(cx0 - x0, cy0 - y0) + Math.hypot(cx1 - cx0, cy1 - cy0) + Math.hypot(x1 - cx1, y1 - cy1);
-    const steps = Math.max(10, Math.ceil(approx / 2.5));
-    const pts: [number, number][] = [];
-    for (let i = 0; i <= steps; i++) {
-      const t = i / steps;
-      const u = 1 - t;
-      const x = u * u * u * x0 + 3 * u * u * t * cx0 + 3 * u * t * t * cx1 + t * t * t * x1;
-      const y = u * u * u * y0 + 3 * u * u * t * cy0 + 3 * u * t * t * cy1 + t * t * t * y1;
-      pts.push([x, y]);
-    }
-    this.drawPolyline(pts, lineWidth, color, false);
-  }
-
-  fillTriangle(x0: number, y0: number, x1: number, y1: number, x2: number, y2: number, color: RGBA): void {
-    this.fillPolygon([[x0, y0], [x1, y1], [x2, y2]], color);
-  }
-
-  fillPolygon(points: readonly Point[], color: RGBA): void {
+  fillPolygon(points: Array<[number, number]>, c: RGBA): void {
     const n = points.length;
     if (n < 3) return;
-    const xs = new Float64Array(n);
-    const ys = new Float64Array(n);
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (let i = 0; i < n; i++) {
-      const x = ptX(points[i]);
-      const y = ptY(points[i]);
-      xs[i] = x;
-      ys[i] = y;
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
+      const [px, py] = points[i];
+      if (px < minX) minX = px;
+      if (py < minY) minY = py;
+      if (px > maxX) maxX = px;
+      if (py > maxY) maxY = py;
     }
     const x0 = Math.max(0, Math.floor(minX));
-    const y0 = Math.max(0, Math.floor(minY));
     const x1 = Math.min(this.width - 1, Math.ceil(maxX));
+    const y0 = Math.max(0, Math.floor(minY));
     const y1 = Math.min(this.height - 1, Math.ceil(maxY));
-    if (x0 > x1 || y0 > y1) return;
-    const spanW = x1 - x0 + 1;
-    const covRow = new Uint8Array(spanW);
-    const nodes: number[] = [];
-
+    const sub = [0.25, 0.75];
+    const xs: number[] = [];
     for (let py = y0; py <= y1; py++) {
-      covRow.fill(0);
-      for (let sy = 0; sy < 4; sy++) {
-        const y = py + (sy + 0.5) * 0.25;
-        nodes.length = 0;
+      const counts = new Uint8Array(x1 - x0 + 1);
+      for (let sy = 0; sy < 2; sy++) {
+        const y = py + sub[sy];
+        xs.length = 0;
         for (let i = 0, j = n - 1; i < n; j = i++) {
-          const yi = ys[i];
-          const yj = ys[j];
-          if ((yi <= y && yj > y) || (yj <= y && yi > y)) {
-            nodes.push(xs[i] + ((y - yi) * (xs[j] - xs[i])) / (yj - yi));
+          const [xi, yi] = points[i];
+          const [xj, yj] = points[j];
+          if ((yi > y) !== (yj > y)) {
+            xs.push(xi + ((y - yi) * (xj - xi)) / (yj - yi));
           }
         }
-        nodes.sort((a, b) => a - b);
-        for (let k = 0; k + 1 < nodes.length; k += 2) {
-          const xa = nodes[k];
-          const xb = nodes[k + 1];
-          const pxStart = Math.max(x0, Math.floor(xa));
-          const pxEnd = Math.min(x1, Math.floor(xb));
-          for (let px = pxStart; px <= pxEnd; px++) {
-            let hits = 0;
-            if (px + 0.125 >= xa && px + 0.125 < xb) hits++;
-            if (px + 0.375 >= xa && px + 0.375 < xb) hits++;
-            if (px + 0.625 >= xa && px + 0.625 < xb) hits++;
-            if (px + 0.875 >= xa && px + 0.875 < xb) hits++;
-            covRow[px - x0] += hits;
+        xs.sort((a, b) => a - b);
+        for (let k = 0; k + 1 < xs.length; k += 2) {
+          const left = xs[k];
+          const right = xs[k + 1];
+          const sx0 = Math.max(x0, Math.floor(left));
+          const sx1 = Math.min(x1, Math.ceil(right));
+          for (let px = sx0; px <= sx1; px++) {
+            if (px + 0.25 >= left && px + 0.25 < right) counts[px - x0]++;
+            if (px + 0.75 >= left && px + 0.75 < right) counts[px - x0]++;
           }
         }
       }
-      for (let dx = 0; dx < spanW; dx++) {
-        const c = covRow[dx];
-        if (c > 0) this.blendPixel(x0 + dx, py, color, c / 16);
+      for (let px = x0; px <= x1; px++) {
+        const hits = counts[px - x0];
+        if (hits > 0) this.blendPixel(px, py, c, hits * 0.25);
       }
     }
-  }
-
-  strokePolygon(points: readonly Point[], lineWidth: number, color: RGBA): void {
-    this.drawPolyline(points, lineWidth, color, true);
   }
 
   fillLinearGradient(
-    x: number,
-    y: number,
-    w: number,
-    h: number,
-    x0: number,
-    y0: number,
-    x1: number,
-    y1: number,
-    stops: readonly ColorStop[],
+    x: number, y: number, w: number, h: number,
+    x0: number, y0: number, x1: number, y1: number, stops: ColorStop[],
   ): void {
-    const px0 = Math.max(0, Math.floor(x));
-    const py0 = Math.max(0, Math.floor(y));
-    const px1 = Math.min(this.width - 1, Math.ceil(x + w) - 1);
-    const py1 = Math.min(this.height - 1, Math.ceil(y + h) - 1);
+    const rx0 = Math.max(0, Math.floor(x));
+    const ry0 = Math.max(0, Math.floor(y));
+    const rx1 = Math.min(this.width, Math.ceil(x + w));
+    const ry1 = Math.min(this.height, Math.ceil(y + h));
     const dx = x1 - x0;
     const dy = y1 - y0;
-    const len2 = dx * dx + dy * dy;
-    const invLen2 = len2 > 1e-8 ? 1 / len2 : 0;
-    for (let py = py0; py <= py1; py++) {
-      const ry = py + 0.5 - y0;
-      for (let px = px0; px <= px1; px++) {
-        const t = ((px + 0.5 - x0) * dx + ry * dy) * invLen2;
-        this.blendPixel(px, py, sampleStops(stops, t), 1);
+    const lenSq = dx * dx + dy * dy || 1;
+    for (let py = ry0; py < ry1; py++) {
+      const uy = py + 0.5 - y0;
+      for (let px = rx0; px < rx1; px++) {
+        const t = ((px + 0.5 - x0) * dx + uy * dy) / lenSq;
+        this.blendPixel(px, py, sampleGradient(stops, t));
       }
     }
   }
 
-  fillRadialGradient(cx: number, cy: number, r0: number, r1: number, stops: readonly ColorStop[]): void {
-    const maxR = Math.max(r0, r1);
-    const x0 = Math.max(0, Math.floor(cx - maxR - 1));
-    const y0 = Math.max(0, Math.floor(cy - maxR - 1));
-    const x1 = Math.min(this.width - 1, Math.ceil(cx + maxR + 1));
-    const y1 = Math.min(this.height - 1, Math.ceil(cy + maxR + 1));
-    const span = r1 - r0;
-    const invSpan = Math.abs(span) > 1e-8 ? 1 / span : 0;
-    for (let py = y0; py <= y1; py++) {
+  fillRadialGradient(
+    cx: number, cy: number, r0: number, r1: number, stops: ColorStop[],
+    bounds?: { x: number; y: number; w: number; h: number },
+  ): void {
+    const x0 = bounds ? Math.max(0, Math.floor(bounds.x)) : Math.max(0, Math.floor(cx - r1));
+    const y0 = bounds ? Math.max(0, Math.floor(bounds.y)) : Math.max(0, Math.floor(cy - r1));
+    const x1 = bounds ? Math.min(this.width, Math.ceil(bounds.x + bounds.w)) : Math.min(this.width, Math.ceil(cx + r1));
+    const y1 = bounds ? Math.min(this.height, Math.ceil(bounds.y + bounds.h)) : Math.min(this.height, Math.ceil(cy + r1));
+    const span = Math.max(1e-6, r1 - r0);
+    for (let py = y0; py < y1; py++) {
       const dy = py + 0.5 - cy;
-      for (let px = x0; px <= x1; px++) {
+      for (let px = x0; px < x1; px++) {
         const d = Math.hypot(px + 0.5 - cx, dy);
-        if (d > maxR) continue;
-        const t = invSpan !== 0 ? (d - r0) * invSpan : 1;
-        this.blendPixel(px, py, sampleStops(stops, t), 1);
+        if (d <= r1) this.blendPixel(px, py, sampleGradient(stops, (d - r0) / span));
       }
     }
   }
 
-  drawGlow(cx: number, cy: number, radius: number, color: RGBA, power = 2): void {
-    if (radius <= 0) return;
-    const x0 = Math.max(0, Math.floor(cx - radius));
-    const y0 = Math.max(0, Math.floor(cy - radius));
-    const x1 = Math.min(this.width - 1, Math.ceil(cx + radius));
-    const y1 = Math.min(this.height - 1, Math.ceil(cy + radius));
-    const invR = 1 / radius;
-    for (let py = y0; py <= y1; py++) {
-      const dy = py + 0.5 - cy;
-      for (let px = x0; px <= x1; px++) {
-        const u = 1 - Math.hypot(px + 0.5 - cx, dy) * invR;
-        if (u > 0) this.blendPixel(px, py, color, Math.pow(u, power));
+  measureText(text: string, scale = 1, letterSpacing = 1): { width: number; height: number } {
+    const s = Math.max(1, Math.round(scale));
+    const step = (5 + letterSpacing) * s;
+    const width = text.length > 0 ? text.length * step - letterSpacing * s : 0;
+    return { width, height: 7 * s };
+  }
+
+  drawText(text: string, x: number, y: number, c: RGBA, opts: TextOptions = {}): void {
+    const s = Math.max(1, Math.round(opts.scale ?? 1));
+    const spacing = opts.letterSpacing ?? 1;
+    const { width } = this.measureText(text, s, spacing);
+    let ox = Math.round(x);
+    if (opts.align === "center") ox = Math.round(x - width * 0.5);
+    else if (opts.align === "right") ox = Math.round(x - width);
+    const oy = Math.round(y);
+    if (opts.shadowColor) {
+      this.drawText(text, ox + (opts.shadowOffsetX ?? s), oy + (opts.shadowOffsetY ?? s), opts.shadowColor, {
+        ...opts, align: "left", shadowColor: undefined,
+      });
+    }
+    const step = (5 + spacing) * s;
+    for (let i = 0; i < text.length; i++) {
+      const rows = glyphRows(text[i]);
+      const gx = ox + i * step;
+      for (let r = 0; r < 7; r++) {
+        const bits = parseInt(rows[r], 32);
+        for (let col = 0; col < 5; col++) {
+          if (((bits >> (4 - col)) & 1) !== 0) {
+            this.fillRect(gx + col * s, oy + r * s, opts.bold ? s + 1 : s, s, c);
+          }
+        }
       }
     }
   }
 
-  toPNG(): Buffer {
-    return encodePNG(this.width, this.height, this.data);
+  drawWrappedText(text: string, x: number, y: number, maxWidth: number, c: RGBA, opts: TextOptions = {}): number {
+    const s = Math.max(1, Math.round(opts.scale ?? 1));
+    const spacing = opts.letterSpacing ?? 1;
+    const lineH = opts.lineHeight ?? Math.round(10 * s);
+    const words = text.split(/\s+/).filter(Boolean);
+    const lines: string[] = [];
+    let cur = "";
+    for (const w of words) {
+      const next = cur ? `${cur} ${w}` : w;
+      if (cur && this.measureText(next, s, spacing).width > maxWidth) {
+        lines.push(cur);
+        cur = w;
+      } else {
+        cur = next;
+      }
+    }
+    if (cur) lines.push(cur);
+    let cy = y;
+    for (const line of lines) {
+      this.drawText(line, x, cy, c, opts);
+      cy += lineH;
+    }
+    return cy;
   }
 
   toPng(): Buffer {
-    return this.toPNG();
+    return encodePng(this.width, this.height, this.data);
   }
 }
